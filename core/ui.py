@@ -75,7 +75,18 @@ def print_banner() -> None:
 
 def print_devices(devices: list) -> None:
     if not devices:
-        warn("No CatSniffer devices detected. Connect your device and retry.")
+        from core.device import is_in_bootloader_mode
+        if is_in_bootloader_mode():
+            warn(
+                "CatSniffer detected in [bold]RP2040 bootloader / UF2 mode[/bold] — "
+                "no serial ports are exposed in this state."
+            )
+            console.print(
+                "  [dim]Press the [white]Reset[/white] button (or re-plug without "
+                "holding BOOT) so the bridge firmware starts, then retry.[/dim]"
+            )
+        else:
+            warn("No CatSniffer devices detected. Connect your device and retry.")
         return
 
     t = Table(title=f"Found {len(devices)} CatSniffer device(s)", box=box.ROUNDED)

@@ -16,9 +16,14 @@ BASE_DIR = Path(__file__).parent
 # auto-discovered later in core/firmware.py
 CATNIP_PATH = os.environ.get("CATNIP_PATH", "catnip")
 
-# ─── USB identifiers (Raspberry Pi RP2040 — used by CatSniffer v3) ───────────
-CATSNIFFER_VID = 0x2E8A
-CATSNIFFER_PID = 0x00C0
+# ─── USB identifiers ─────────────────────────────────────────────────────────
+# Firmware mode (bridge running) — Electronic Cats / pid.codes VID
+CATSNIFFER_VID = 0x1209
+CATSNIFFER_PID = 0xBABB
+
+# RP2040 bootloader / UF2 mass-storage mode ("RP2 Boot")
+CATSNIFFER_BOOT_VID = 0x2E8A
+CATSNIFFER_BOOT_PID = 0x0003
 
 # ─── Serial defaults ─────────────────────────────────────────────────────────
 # Most CC1352 firmwares (scanner, spoofer, justworks) output at 9600 baud

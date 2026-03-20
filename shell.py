@@ -102,7 +102,7 @@ def _configure_options(instance: BaseAttack) -> None:
             t.add_row(str(i), opt.name, display_val, opt.description + choices_hint)
 
         console.print(t)
-        console.print("  [dim][b] back / save[/dim]")
+        console.print("  [dim]\\[b]  back / save[/dim]")
         console.print()
 
         choice = _prompt("Edit option #")
@@ -140,9 +140,9 @@ def _attack_screen(attack_cls: Type[BaseAttack], device: CatSnifferDevice) -> No
         console.print(f"  Firmware : [cyan]{attack_cls.firmware_alias or '—'}[/cyan]")
         console.print(f"  Category : [cyan]{attack_cls.category}[/cyan]")
         console.print()
-        console.print("  [bold][r][/bold]un attack")
-        console.print("  [bold][o][/bold]ptions")
-        console.print("  [bold][b][/bold]ack")
+        console.print("  [bold cyan]\\[r][/bold cyan]  run attack")
+        console.print("  [bold cyan]\\[o][/bold cyan]  options")
+        console.print("  [bold cyan]\\[b][/bold cyan]  back")
         console.print()
 
         choice = _prompt()
@@ -184,7 +184,7 @@ def _category_screen(category: str, device: CatSnifferDevice) -> None:
             t.add_row(str(i), atk.name, atk.description)
 
         console.print(t)
-        console.print("  [dim][b] back[/dim]")
+        console.print("  [dim]\\[b]  back[/dim]")
         console.print()
 
         choice = _prompt()
@@ -229,10 +229,10 @@ def run_menu() -> None:
 
         for i, cat in enumerate(categories, 1):
             count = len(by_cat[cat])
-            t.add_row(f"[{i}]", f"{cat}  [dim]({count} attack{'s' if count != 1 else ''})[/dim]")
+            t.add_row(f"\\[{i}]", f"{cat}  [dim]({count} attack{'s' if count != 1 else ''})[/dim]")
 
-        t.add_row("[d]", "Devices — rescan / select")
-        t.add_row("[q]", "Quit")
+        t.add_row("\\[d]", "Devices — rescan / select")
+        t.add_row("\\[q]", "Quit")
 
         console.print(t)
         console.print()

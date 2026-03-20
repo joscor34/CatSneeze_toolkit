@@ -8,12 +8,14 @@ Each CatSniffer v3 exposes 3 serial ports (RP2040 VID 0x2E8A):
 """
 from __future__ import annotations
 
+import platform
+import subprocess
 from dataclasses import dataclass
 from typing import List, Optional
 
 import serial.tools.list_ports
 
-from config import CATSNIFFER_VID
+from config import CATSNIFFER_VID, CATSNIFFER_BOOT_VID, CATSNIFFER_BOOT_PID
 
 
 @dataclass
@@ -76,3 +78,30 @@ def get_device(device_id: Optional[int] = None) -> Optional[CatSnifferDevice]:
         if dev.device_id == device_id:
             return dev
     return None
+
+
+def is_in_bootloader_mode() -> bool:
+    """
+    Return True if a CatSniffer RP2040 is detected in USB bootloader /
+    UF2 mass-storage mode (VID=0x2E8A, PID=0x0003 — "RP2 Boot").
+    """
+    vid_dec = int(CATSNIFFER_BOOT_VID)   # 11914  (0x2E8A)
+    pid_dec = int(CATSNIFFER_BOOT_PID)   # 3      (0x0003)
+    try:
+        if platform.system() == "Darwin":
+            out = subprocess.run(
+                ["ioreg", "-p", "IOUSB", "-l", "-w", "0"],
+                capture_output=True, text=True, timeout=5,
+            ).stdout
+            return (
+                f'"idVendor" = {vid_dec}' in out
+                and f'"idProduct" = {pid_dec}' in out
+            )
+        elif platform.system() == "Linux":
+            out = subprocess.run(
+                ["lsusb"], capture_output=True, text=True, timeout=5,
+            ).stdout
+            return "2e8a:0003" in out.lower()
+    except Exception:
+        pass
+    return False
