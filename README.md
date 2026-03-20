@@ -1,6 +1,12 @@
 # CatSneeze_toolkit
 
-Modular CLI toolkit for the [CatSniffer v3](https://electroniccats.com) IoT research hardware.
+<p align="center">
+  <img src="assets/logo.png" alt="CatSneeze_toolkit logo" width="220"/>
+</p>
+
+<p align="center">
+  <em>Modular CLI toolkit for the <a href="https://electroniccats.com">CatSniffer v3</a> IoT research hardware.</em>
+</p>
 
 ```
    /\_/\  
