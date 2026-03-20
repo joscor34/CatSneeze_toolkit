@@ -48,13 +48,11 @@ def separator() -> None:
 # ── Header ────────────────────────────────────────────────────────────────────
 
 _ASCII = r"""
-   /\_____/\
-  /  o   o  \    CatSniffer Toolkit
- ( ==  ^  == )
-  )         (
- (           )
-( (  )   (  ) )
-(__(__)___(__)__)"""
+   /\_/\  
+  ( >.< )  ~  *ACHOO!*
+  /  ^  \       sniffing your packets...
+ /|     |\
+   || ||      """
 
 
 def print_banner() -> None:
@@ -63,7 +61,7 @@ def print_banner() -> None:
             f"[cyan bold]{_ASCII}[/cyan bold]\n"
             f"\n  [bold white]{TOOLKIT_NAME}[/bold white]  "
             f"[dim]v{TOOLKIT_VERSION}[/dim]\n"
-            f"  [dim]Modular IoT attack toolkit for CatSniffer hardware[/dim]",
+            f"  [dim]Modular IoT sneezing toolkit — *achoo!* — for CatSniffer hardware[/dim]",
             border_style="cyan",
             padding=(0, 2),
         )

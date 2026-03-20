@@ -240,13 +240,13 @@ def run_menu() -> None:
         if device:
             console.print(f"  Active device: [cyan]{device}[/cyan]  [dim]{device.summary()}[/dim]")
         else:
-            console.print("  [yellow]No device selected — connect your CatSniffer.[/yellow]")
+            console.print("  [yellow]~ sneeze ~ No device selected — connect your CatSniffer.[/yellow]")
         console.print()
 
         choice = _prompt()
 
         if choice.lower() in ("q", "quit", "exit"):
-            console.print("\n[dim]Goodbye.[/dim]\n")
+            console.print("\n[dim]~ achoo! ~ Goodbye. ~[/dim]\n")
             break
 
         elif choice.lower() in ("d", "devices"):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CatSniffer Toolkit — entry point.
+CatSneeze_toolkit — entry point.  *ACHOO!*
 
 Usage
 ─────
@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 @click.group(invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
 @click.pass_context
 def cli(ctx: click.Context) -> None:
-    """CatSniffer Toolkit — modular IoT attack framework."""
+    """CatSneeze_toolkit — modular IoT sniffing framework. *achoo!*"""
     if ctx.invoked_subcommand is None:
         # No sub-command → launch interactive menu
         from shell import run_menu

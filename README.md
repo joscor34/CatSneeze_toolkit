@@ -1,15 +1,14 @@
-# CatSniffer Toolkit
+# CatSneeze_toolkit
 
 Modular CLI toolkit for the [CatSniffer v3](https://electroniccats.com) IoT research hardware.
 
 ```
-   /\_____/\
-  /  o   o  \    CatSniffer Toolkit
- ( ==  ^  == )
-  )         (
- (           )
-( (  )   (  ) )
-(__(__)___(__)__)
+   /\_/\  
+  ( >.< )  ~  *ACHOO!*
+  /  ^  \       sniffing your packets...
+ /|     |\  
+   || ||      
+[ CatSneeze_toolkit ]
 ```
 
 ## Requirements

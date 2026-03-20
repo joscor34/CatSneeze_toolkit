@@ -1,11 +1,11 @@
 """
-CatSniffer Toolkit — Global Configuration
+CatSneeze_toolkit — Global Configuration
 """
 import os
 from pathlib import Path
 
 # ─── Toolkit info ────────────────────────────────────────────────────────────
-TOOLKIT_NAME = "CatSniffer Toolkit"
+TOOLKIT_NAME = "CatSneeze_toolkit"
 TOOLKIT_VERSION = "0.1.0"
 TOOLKIT_AUTHOR = "Your Lab"
 
