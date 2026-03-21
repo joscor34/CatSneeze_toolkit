@@ -152,7 +152,7 @@ class BleSniffer(BaseAttack):
 
         # Check sniffle installed
         if not _sniffle_available():
-            UI.warning(
+            UI.warn(
                 "The [bold]sniffle[/bold] Python package is not installed.\n"
                 "  Install with:  [bold]pip install sniffle[/bold]\n"
                 "  Or:            [bold]pip install git+https://github.com/nccgroup/Sniffle[/bold]\n\n"
@@ -305,4 +305,4 @@ class BleSniffer(BaseAttack):
                 "Open with Wireshark (BLE PCAP dissector required)."
             )
         else:
-            UI.warning("No data captured or file is empty.")
+            UI.warn("No data captured or file is empty.")
