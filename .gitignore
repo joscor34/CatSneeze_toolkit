@@ -29,3 +29,4 @@ env/
 
 # CatSniffer firmware releases (downloaded at runtime by catnip)
 release_board-*/
+Sniffle/
