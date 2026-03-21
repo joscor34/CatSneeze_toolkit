@@ -21,10 +21,10 @@ Alias   : ble | sniffle
 Python host tool
 ────────────────
 Sniffle requires its Python host package:
-  pip install sniffle
-  # or:
+  # Sniffle has no pip package — clone and install deps manually:
   git clone https://github.com/nccgroup/Sniffle
-  cd Sniffle && pip install -e .
+  pip install pyserial numpy scipy
+  # Then place the Sniffle/ folder next to CatSniffer_my_tool/ (auto-discovered).
 
 Usage (from Sniffle Python host):
   python3 -m sniffle.sniff_receiver -s /dev/tty.usbmodem31101
@@ -54,6 +54,7 @@ permission to test is likely illegal in most jurisdictions. Use responsibly.
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -75,8 +76,49 @@ from core.firmware import flash_firmware
 console = Console()
 
 
+_SNIFFLE_CLI_PATH: Path | None = None
+
+
+def _inject_sniffle_path() -> None:
+    """Add Sniffle's python_cli directory to sys.path if found locally."""
+    global _SNIFFLE_CLI_PATH
+    if importlib.util.find_spec("sniffle") is not None:
+        return  # already importable
+
+    # Search for a local Sniffle clone.
+    candidates = [
+        Path(__file__).resolve().parents[2] / "Sniffle" / "python_cli",
+        Path(__file__).resolve().parents[1] / "Sniffle" / "python_cli",
+        Path.home() / "Sniffle" / "python_cli",
+    ]
+    for candidate in candidates:
+        if (candidate / "sniffle" / "__init__.py").exists():
+            sys.path.insert(0, str(candidate))
+            _SNIFFLE_CLI_PATH = candidate
+            return
+
+
+def _sniffle_env() -> dict:
+    """Return environ with PYTHONPATH set so subprocesses can import sniffle."""
+    _inject_sniffle_path()  # ensure _SNIFFLE_CLI_PATH is populated
+    env = os.environ.copy()
+    cli_path = _SNIFFLE_CLI_PATH
+    if cli_path is None:
+        # Try to derive it from sys.path (installed package)
+        try:
+            import sniffle as _s
+            cli_path = Path(_s.__file__).parent.parent
+        except Exception:
+            pass
+    if cli_path is not None:
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = str(cli_path) + (os.pathsep + existing if existing else "")
+    return env
+
+
 def _sniffle_available() -> bool:
-    """Return True if the sniffle Python package is importable."""
+    """Return True if the sniffle Python package is importable (auto-discovers local clone)."""
+    _inject_sniffle_path()
     return importlib.util.find_spec("sniffle") is not None
 
 
@@ -85,7 +127,7 @@ class BleSniffer(BaseAttack):
     # ── Metadata ──────────────────────────────────────────────────────────────
     name = "ble_sniffer"
     description = "Active BLE sniffer with connection following (Sniffle firmware)"
-    firmware_alias = "sniffle"
+    firmware_alias = "ble"
     category = "BLE"
 
     options = [
@@ -162,7 +204,10 @@ class BleSniffer(BaseAttack):
             return
 
         if mode == "auto":
-            if shutil.which("wireshark"):
+            ws_found = shutil.which("wireshark") or os.path.exists(
+                "/Applications/Wireshark.app/Contents/MacOS/Wireshark"
+            )
+            if ws_found:
                 mode = "wireshark"
             else:
                 mode = "pcap"
@@ -178,7 +223,10 @@ class BleSniffer(BaseAttack):
     def _show_info(self, port) -> None:
         """Display setup instructions."""
         sniffle_ok = _sniffle_available()
-        ws_ok = shutil.which("wireshark") is not None
+        ws_ok = bool(
+            shutil.which("wireshark") or
+            os.path.exists("/Applications/Wireshark.app/Contents/MacOS/Wireshark")
+        )
 
         hdr = Table(box=None, show_header=False, padding=(0, 2))
         hdr.add_column(style="dim cyan", no_wrap=True)
@@ -238,15 +286,23 @@ class BleSniffer(BaseAttack):
 
     def _build_sniffle_cmd(self, port, follow: bool, channel: str) -> list[str]:
         """Return the base sniffle command."""
-        cmd = [sys.executable, "-m", "sniffle.sniff_receiver", "-s", str(port)]
+        # sniff_receiver.py lives in python_cli/ (not inside the sniffle package)
+        _inject_sniffle_path()
+        if _SNIFFLE_CLI_PATH is not None:
+            script = str(_SNIFFLE_CLI_PATH / "sniff_receiver.py")
+        else:
+            # Fallback: hope it's on PATH
+            script = "sniff_receiver.py"
+        cmd = [sys.executable, script, "-s", str(port)]
         if not follow:
-            cmd.append("-n")  # no connection following
+            cmd.append("-a")  # --advonly: passive scan, don't follow connections
         if channel != "all":
             cmd += ["-c", channel]
         return cmd
 
     def _launch_wireshark(self, port, follow: bool, channel: str) -> None:
-        if not shutil.which("wireshark"):
+        ws_bin = shutil.which("wireshark") or "/Applications/Wireshark.app/Contents/MacOS/Wireshark"
+        if not os.path.exists(ws_bin) and not shutil.which("wireshark"):
             UI.error(
                 "Wireshark not found in PATH.\n"
                 "  Install: [bold]brew install --cask wireshark[/bold]\n"
@@ -254,29 +310,68 @@ class BleSniffer(BaseAttack):
             )
             return
 
+        # Always save to a real timestamped PCAP file so data is not lost.
+        # Then tail the file into Wireshark stdin for live display.
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        pcap_path = Path.cwd() / f"ble_capture_{ts}.pcap"
+
         UI.info(
-            "Launching Wireshark with live BLE capture…\n"
+            f"Launching Wireshark — saving to [bold]{pcap_path.name}[/bold]\n"
             "Close Wireshark or press Ctrl-C here to stop."
         )
-        cmd_sniffle = self._build_sniffle_cmd(port, follow, channel)
-        cmd_ws = ["wireshark", "-k", "-i", "-"]
+
+        sniffle_env = _sniffle_env()
+        cmd_sniffle = self._build_sniffle_cmd(port, follow, channel) + ["-o", str(pcap_path)]
+
+        p_sniffle = None
+        p_tail = None
+        p_ws = None
 
         try:
-            p_sniffle = subprocess.Popen(cmd_sniffle, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            p_ws = subprocess.Popen(cmd_ws, stdin=p_sniffle.stdout)
-            p_sniffle.stdout.close()
+            p_sniffle = subprocess.Popen(cmd_sniffle, env=sniffle_env)
+
+            # Wait until sniff_receiver writes the 24-byte PCAP global header
+            deadline = time.time() + 8.0
+            while time.time() < deadline:
+                if pcap_path.exists() and pcap_path.stat().st_size >= 24:
+                    break
+                time.sleep(0.1)
+            else:
+                UI.warn("Timeout waiting for capture to start — check device connection.")
+                return
+
+            # tail -c +1 -f: stream the real PCAP file (from byte 1) to Wireshark stdin
+            p_tail = subprocess.Popen(
+                ["tail", "-c", "+1", "-f", str(pcap_path)],
+                stdout=subprocess.PIPE,
+            )
+            p_ws = subprocess.Popen(
+                [ws_bin, "-k", "-i", "-"],
+                stdin=p_tail.stdout,
+                stderr=subprocess.DEVNULL,
+            )
+            p_tail.stdout.close()
             p_ws.wait()
+
         except KeyboardInterrupt:
             pass
         except FileNotFoundError as e:
             UI.error(f"Failed to launch process: {e}")
         finally:
-            try:
-                p_sniffle.terminate()
-            except Exception:
-                pass
+            for proc in (p_sniffle, p_tail, p_ws):
+                if proc is not None:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
 
-        UI.info("Wireshark session ended.")
+        if pcap_path.exists() and pcap_path.stat().st_size > 24:
+            UI.success(
+                f"Capture saved: [bold]{pcap_path}[/bold] "
+                f"({pcap_path.stat().st_size} bytes)"
+            )
+        else:
+            UI.warn(f"Capture file empty or missing: {pcap_path}")
 
     def _capture_pcap(self, port, follow: bool, channel: str, output: str) -> None:
         out_path = Path(output).expanduser().resolve()
@@ -287,7 +382,7 @@ class BleSniffer(BaseAttack):
         cmd = self._build_sniffle_cmd(port, follow, channel) + ["-o", str(out_path)]
 
         try:
-            proc = subprocess.Popen(cmd)
+            proc = subprocess.Popen(cmd, env=_sniffle_env())
             proc.wait()
         except KeyboardInterrupt:
             pass
