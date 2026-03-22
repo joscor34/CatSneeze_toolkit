@@ -517,7 +517,7 @@ class NRF24Sniffer(BaseAttack):
             body.add_row(hdr)
             body.add_row(Rule(style="dim"))
             body.add_row(Text(f"📡 Dispositivos nRF24 detectados — {len(snap_devs)}", style="bold"))
-            body.add_row(dev_tbl if snap_devs else Text("[dim](no hay tramas aún)[/dim]", style="dim"))
+            body.add_row(dev_tbl if snap_devs else "[dim](no hay tramas aún)[/dim]")
 
             if scan_part:
                 body.add_row(Rule(style="dim"))
@@ -527,7 +527,7 @@ class NRF24Sniffer(BaseAttack):
 
             body.add_row(Rule(style="dim"))
             body.add_row(Text("📋 Eventos", style="bold"))
-            body.add_row(Text(evlog_text, style="dim white"))
+            body.add_row(evlog_text)
 
             border = "cyan"
             if snap_devs:
