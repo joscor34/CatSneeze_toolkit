@@ -174,8 +174,8 @@ como ESB probando address widths de 3, 4 y 5 bytes y validando el CRC.
 # Desde el directorio raíz del firmware
 mkdir build && cd build
 cmake .. \
-  -DTICC13XX_SDK_PATH=/opt/ti/simplelink_cc13xx_cc26xx_sdk_7_10_01_24 \
-  -DSYSCONFIG_PATH=/opt/ti/sysconfig_1.16 \
+  -DTICC13XX_SDK_PATH=C:\ti\simplelink_cc13xx_cc26xx_sdk_8_32_00_07 \
+  -DSYSCONFIG_PATH=C:\ti\sysconfig_1.21.1 \
   -DCMAKE_TOOLCHAIN_FILE=../arm-none-eabi-toolchain.cmake
 
 cmake --build . --target nrf24_sniffer
