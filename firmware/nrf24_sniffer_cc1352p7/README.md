@@ -170,13 +170,33 @@ como ESB probando address widths de 3, 4 y 5 bytes y validando el CRC.
 
 ## Paso 3 — Compilar y flashear
 
+```bat
+:: Windows — CMD (Command Prompt)
+:: Usar / en las rutas y todo en una sola línea (o con ^ para continuar)
+mkdir build && cd build
+cmake .. -DCMAKE_TOOLCHAIN_FILE=../arm-none-eabi-toolchain.cmake -DTICC13XX_SDK_PATH="C:/ti/simplelink_cc13xx_cc26xx_sdk_8_32_00_07" -DSYSCONFIG_PATH="C:/ti/sysconfig_1.21.1"
+
+cmake --build . --target nrf24_sniffer
+```
+
+```powershell
+# Windows — PowerShell (línea de continuación con backtick `)
+mkdir build; cd build
+cmake .. `
+  -DCMAKE_TOOLCHAIN_FILE=../arm-none-eabi-toolchain.cmake `
+  -DTICC13XX_SDK_PATH="C:/ti/simplelink_cc13xx_cc26xx_sdk_8_32_00_07" `
+  -DSYSCONFIG_PATH="C:/ti/sysconfig_1.21.1"
+
+cmake --build . --target nrf24_sniffer
+```
+
 ```bash
-# Desde el directorio raíz del firmware
+# macOS / Linux — bash/zsh
 mkdir build && cd build
 cmake .. \
-  -DTICC13XX_SDK_PATH=C:\ti\simplelink_cc13xx_cc26xx_sdk_8_32_00_07 \
-  -DSYSCONFIG_PATH=C:\ti\sysconfig_1.21.1 \
-  -DCMAKE_TOOLCHAIN_FILE=../arm-none-eabi-toolchain.cmake
+  -DCMAKE_TOOLCHAIN_FILE=../arm-none-eabi-toolchain.cmake \
+  -DTICC13XX_SDK_PATH=/home/user/ti/simplelink_cc13xx_cc26xx_sdk_8_32_00_07 \
+  -DSYSCONFIG_PATH=/home/user/ti/sysconfig_1.21.1
 
 cmake --build . --target nrf24_sniffer
 
