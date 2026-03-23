@@ -98,6 +98,14 @@ static sniffer_state_t g_state = {
 
 /* Buffer de recepción RF (shared con RF core DMA) */
 static uint8_t g_rxBuf[NRF24_RX_BUF_LEN]  __attribute__((aligned(4)));
+
+/* ── DataQueue para CMD_PROP_RX_ADV ─────────────────────────────────────────── *
+ * CMD_PROP_RX_ADV requiere una DataQueue con al menos una entrada para que
+ * el RF core tenga donde guardar el paquete recibido. Sin esto pQueue=NULL
+ * implica que ningún paquete se almacena y rx_one_packet() nunca recibe nada.
+ * Se usa DATA_ENTRY_TYPE_PTR apuntando a g_rxBuf (paquete fijo 37 bytes).     */
+static rfc_dataEntryPointer_t g_rxEntry  __attribute__((aligned(4)));
+static dataQueue_t            g_rxQueue;
 /* Buffer de transmisión (frame ESB construido por esb_build_frame) */
 static uint8_t g_txBuf[ESB_MAX_FRAME_LEN]  __attribute__((aligned(4)));
 /* Buffer de entrada UART para comandos */
@@ -251,22 +259,32 @@ static bool rf_tx_frame(const uint8_t *tx_buf, uint8_t tx_len)
  */
 static bool rx_one_packet(int8_t *rssi_out, uint8_t *len_out, uint32_t timeout_ms)
 {
-    /* El struct CMD_PROP_RX_ADV necesita un rfc_propRxOutput_t de estadísticas */
     static rfc_propRxOutput_t rxStats;
+
+    /* ── Configurar DataEntry apuntando a g_rxBuf ────────────────────────────
+     * CMD_PROP_RX_ADV exige una DataQueue válida para almacenar paquetes.
+     * Usamos una entrada tipo PTR (tipo 2) de tamaño fijo = maxPktLen (37 B).
+     * La entrada es circular (pNextEntry → sí misma) para que el comando
+     * pueda reutilizarla dentro de la misma ventana de timeout si bRepeatOk=1.
+     * Con bRepeatOk=0 (smartrf_settings.c) el comando para tras el 1er paquete
+     * y esto no es necesario, pero por robustez se mantiene circular.          */
+    memset(&g_rxEntry, 0, sizeof(g_rxEntry));
+    g_rxEntry.status          = DATA_ENTRY_PENDING;
+    g_rxEntry.config.type     = DATA_ENTRY_TYPE_PTR;
+    g_rxEntry.config.lenSz    = 0;               /* sin prefijo de longitud */
+    g_rxEntry.length          = NRF24_RX_BUF_LEN;
+    g_rxEntry.pData           = g_rxBuf;
+    g_rxEntry.pNextEntry      = (uint8_t *)&g_rxEntry; /* circular: 1 entrada */
+
+    g_rxQueue.pCurrEntry = (uint8_t *)&g_rxEntry;
+    g_rxQueue.pLastEntry = NULL;
+
     memset(&rxStats, 0, sizeof(rxStats));
-    memset(g_rxBuf, 0, sizeof(g_rxBuf));
+    memset(g_rxBuf,  0, NRF24_RX_BUF_LEN);
 
+    /* pQueue → DataQueue con los datos; pOutput → estadísticas (RSSI, contadores) */
+    RF_nrf24_cmdPropRxAdv.pQueue  = &g_rxQueue;
     RF_nrf24_cmdPropRxAdv.pOutput = (uint8_t *)&rxStats;
-    RF_nrf24_cmdPropRxAdv.pQueue  = NULL;  /* directo a g_rxBuf, no DataQueue */
-
-    /*
-     * NOTA IMPLEMENTACIÓN: Para una solución más robusta usar
-     * rfc_dataEntryPointer_t y RF_runCmd con dataQueue. Este esquema
-     * simplificado guarda el primer paquete en g_rxBuf directamente.
-     * Para un firmware de producción, usar el ejemplo "rfPacketRX"
-     * del SDK que muestra el patrón DataQueue completo.
-     */
-    RF_nrf24_cmdPropRxAdv.pOutput = g_rxBuf;
 
     /* Trigger = NOW; endTrigger = TRIG_REL_START con timeout */
     if (timeout_ms > 0) {
@@ -277,16 +295,19 @@ static bool rx_one_packet(int8_t *rssi_out, uint8_t *len_out, uint32_t timeout_m
         RF_nrf24_cmdPropRxAdv.endTime = 0;
     }
 
-    RF_CmdHandle cmd = RF_runCmd(g_rfHandle,
-                                  (RF_Op *)&RF_nrf24_cmdPropRxAdv,
-                                  RF_PriorityNormal, NULL, 0);
+    RF_runCmd(g_rfHandle,
+              (RF_Op *)&RF_nrf24_cmdPropRxAdv,
+              RF_PriorityNormal, NULL, 0);
 
-    uint16_t status = RF_nrf24_cmdPropRxAdv.status;
-    if (status == PROP_DONE_OK || status == PROP_DONE_ENDED) {
+    uint16_t cmd_status = RF_nrf24_cmdPropRxAdv.status;
+    if (cmd_status == PROP_DONE_OK || cmd_status == PROP_DONE_ENDED) {
         *rssi_out = rxStats.lastRssi;
-        *len_out  = RF_nrf24_cmdPropRxAdv.maxPktLen; /* promiscuo = siempre 37 */
-        return true;
+        if (g_rxEntry.status == DATA_ENTRY_FINISHED) {
+            *len_out = RF_nrf24_cmdPropRxAdv.maxPktLen; /* fijo: 37 bytes */
+            return true;
+        }
     }
+    *len_out = 0;
     return false;
 }
 

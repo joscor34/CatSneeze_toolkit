@@ -95,8 +95,20 @@ set(INCLUDES
 )
 
 # ── Defines del dispositivo ───────────────────────────────────────────────────
+# CRITICAL: SET_CCFG_BL_CONFIG_* habilitan el BSL backdoor en el CCFG del
+# CC1352P7. Sin estos overrides, ccfg.c del SDK compila con
+# BL_BACKDOOR_ENABLE=0x00, que deshabilita el BSL por hardware y hace
+# imposible re-flashear con catnip/cc2538-bsl sin JTAG.
+# El CatSniffer usa DIO13 (pin 0x0D) como pin de trigger, activo en bajo.
+# Referencia: TI SDK — source/ti/devices/cc13x2x7_cc26x2x7/startup_files/ccfg.c
 set(DEVICE_DEFINES
     "${DEVICE_DEFINE}"
+    # BSL backdoor habilitado → permite re-flashear via RP2040/catnip
+    "SET_CCFG_BL_CONFIG_BL_ENABLE=0xC5"
+    "SET_CCFG_BL_CONFIG_BOOTLOADER_ENABLE=0xC5"
+    "SET_CCFG_BL_CONFIG_BL_BACKDOOR_ENABLE=0xC5"
+    "SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN=0x0D"
+    "SET_CCFG_BL_CONFIG_BL_BACKDOOR_LEVEL=0x0"
 )
 
 # ── Librerías del SDK ─────────────────────────────────────────────────────────
