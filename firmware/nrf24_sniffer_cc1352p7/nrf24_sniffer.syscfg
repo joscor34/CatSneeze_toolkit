@@ -5,33 +5,20 @@
  *   - RF (radio core propietario 2.4 GHz)
  *   - UART2 (comunicación con el host Python)
  *   - Power (DC/DC habilitado para LP_CC1352P7)
+ *
+ * RTOS: FreeRTOS (compilado como fuente, compatible con GCC)
  */
-
-scripting.exportOptions = {
-    rtos: "tirtos7",
-    format: "legacy"
-};
-
-// ── Dispositivo ───────────────────────────────────────────────────────────────
-const device = scripting.addHardware("/ti/boards/LP_CC1352P7-1");
 
 // ── Módulo RF ─────────────────────────────────────────────────────────────────
 const RF = scripting.addModule("/ti/drivers/RF");
 // Sin configuración adicional: el radio se inicia desde nrf24_sniffer.c
 // usando RF_open() con el RF_Mode generado por smartrf_settings.c
 
-// ── Módulo UART2 (115200 baud, 8N1) ──────────────────────────────────────────
-const UART2   = scripting.addModule("/ti/drivers/UART2");
-const uart0   = UART2.addInstance();
-uart0.$name   = "CONFIG_UART2_0";
-uart0.baudRate = 115200;
-
-// Pines UART por defecto del LaunchPad LP_CC1352P7-1:
-//   TX → DIO13 (XDS110 backchannel UART)
-//   RX → DIO12
-uart0.uart.$assign  = "UART0";
-uart0.uart.txPin.$assign = "DIO13";
-uart0.uart.rxPin.$assign = "DIO12";
+// ── Módulo UART2 (backchannel XDS110 UART @ 115200 baud, DIO12/DIO13) ─────────
+const UART2 = scripting.addModule("/ti/drivers/UART2");
+const uart0 = UART2.addInstance();
+uart0.$name      = "CONFIG_UART2_0";
+uart0.$hardware  = system.deviceData.board.components.XDS110UART;
 
 // ── Power (DC/DC habilitado en LP_CC1352P7-1) ─────────────────────────────────
 const Power = scripting.addModule("/ti/drivers/Power");

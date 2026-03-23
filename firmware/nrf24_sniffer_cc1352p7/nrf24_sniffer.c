@@ -32,14 +32,18 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <ctype.h>
 
 /* TI SimpleLink SDK */
 #include <ti/drivers/rf/RF.h>
 #include <ti/drivers/UART2.h>
 #include <ti/drivers/Board.h>
-#include <ti/sysbios/knl/Task.h>
-#include <ti/sysbios/knl/Clock.h>
-#include <ti/sysbios/BIOS.h>
+
+/* NoRTOS + DPL */
+#include <NoRTOS.h>
+#include <ti/drivers/dpl/ClockP.h>
 
 /* Device-specific */
 #include <ti/devices/cc13x2x7_cc26x2x7/driverlib/rf_prop_mailbox.h>
@@ -49,6 +53,7 @@
 /* Nuestros headers */
 #include "smartrf_settings.h"
 #include "nrf24_esb.h"
+#include "ti_drivers_config.h"
 
 /* ── Configuración ─────────────────────────────────────────────────────────── */
 
@@ -97,6 +102,10 @@ static uint8_t g_rxBuf[NRF24_RX_BUF_LEN]  __attribute__((aligned(4)));
 static uint8_t g_txBuf[ESB_MAX_FRAME_LEN]  __attribute__((aligned(4)));
 /* Buffer de entrada UART para comandos */
 static char    g_cmdBuf[NRF24_CMD_BUF_LEN];
+/* Recepción UART asíncrona (callback en NoRTOS) */
+static volatile bool   g_cmdReady = false;
+static volatile char   g_rxChar;
+static size_t          g_cmdIdx = 0;
 
 /* ── Helpers UART ───────────────────────────────────────────────────────────── */
 
@@ -172,8 +181,7 @@ static bool rf_set_channel(uint8_t channel)
 static void rf_set_sync_word_promisc(void)
 {
     RF_nrf24_cmdPropRxAdv.syncWord0    = 0xAAAAAAAAUL;
-    RF_nrf24_cmdPropRxAdv.syncWordLen  = 32;
-    RF_nrf24_cmdPropRxAdv.maxSyncWordLen = 32;
+    /* syncWordLen is implicit: syncWord0 is always 32 bits */
 }
 
 static void rf_set_sync_word_directed(const uint8_t *addr, uint8_t aw)
@@ -185,8 +193,7 @@ static void rf_set_sync_word_directed(const uint8_t *addr, uint8_t aw)
         ((uint32_t)addr[0]    << 16) |
         ((uint32_t)addr[1]    <<  8) |
         ((uint32_t)addr[2]);
-    RF_nrf24_cmdPropRxAdv.syncWordLen    = 32;
-    RF_nrf24_cmdPropRxAdv.maxSyncWordLen = 32;
+    /* syncWordLen is implicit: syncWord0 is always 32 bits */
     (void)aw; /* se podría ampliar a 40 bits para mayor selectividad */
 }
 
@@ -349,62 +356,25 @@ static void process_and_report(uint8_t channel, int8_t rssi, uint8_t raw_len)
                 pld_str, frame.valid ? "OK" : "FAIL");
 }
 
-/* ── Tarea principal sniffer ─────────────────────────────────────────────────── */
+/* ── Callback de UART2 (NoRTOS: acumula bytes, señala comando completo) ────── */
 
-void snifferTask(uintptr_t arg0, uintptr_t arg1)
+static void uart_read_callback(UART2_Handle handle, void *buf, size_t count,
+                                void *userArg, int_fast16_t status)
 {
-    (void)arg0; (void)arg1;
-
-    /* Inicializar RF */
-    if (!rf_init()) {
-        uart_puts("[ERR] RF init failed, halting\r\n");
-        while (1) { Task_sleep(1000); }
-    }
-
-    uart_puts("===== nRF24L01+ Sniffer (CC1352P7) =====\r\n");
-    uart_printf("[INIT] ch=%03u freq=%uMHz rate=%s mode=%s\r\n",
-                g_state.channel,
-                (unsigned)(2400u + g_state.channel),
-                g_state.rate == NRF24_RATE_1MBPS   ? "1M" :
-                g_state.rate == NRF24_RATE_2MBPS   ? "2M" : "250K",
-                g_state.mode == MODE_PROMISC  ? "PROMISC" :
-                g_state.mode == MODE_DIRECTED ? "DIRECTED" : "SCAN");
-
-    rf_set_sync_word_promisc();
-    rf_set_channel(g_state.channel);
-
-    while (1) {
-        if (g_state.mode == MODE_SCAN) {
-            /* Ciclar por todos los canales, 20 ms cada uno */
-            for (uint8_t ch = 0; ch < NRF24_MAX_CHANNELS; ch++) {
-                rf_set_channel(ch);
-                uint8_t pkts = 0;
-                int8_t  rssi_max = -120;
-
-                uint32_t t_end = Clock_getTicks() +
-                                 (NRF24_SCAN_DWELL_MS * 1000u / Clock_tickPeriod);
-                while (Clock_getTicks() < t_end) {
-                    int8_t  rssi  = -120;
-                    uint8_t rlen  = 0;
-                    if (rx_one_packet(&rssi, &rlen, NRF24_SCAN_DWELL_MS)) {
-                        pkts++;
-                        if (rssi > rssi_max) { rssi_max = rssi; }
-                        process_and_report(ch, rssi, rlen);
-                    }
-                }
-                uart_printf("[SCAN] ch=%03u active=%u pkts=%u rssi_max=%+04d\r\n",
-                            ch, pkts > 0 ? 1u : 0u, pkts, (int)rssi_max);
+    if (status == UART2_STATUS_SUCCESS && count > 0) {
+        char c = g_rxChar;
+        if (c == '\r' || c == '\n') {
+            if (g_cmdIdx > 0) {
+                g_cmdBuf[g_cmdIdx] = '\0';
+                g_cmdReady = true;
+                return; /* esperar a que main() procese el comando */
             }
-
-        } else {
-            /* Modo PROMISC o DIRECTED: recibir en bucle */
-            int8_t  rssi = -120;
-            uint8_t rlen = 0;
-            if (rx_one_packet(&rssi, &rlen, 1000u /* 1 s timeout */)) {
-                process_and_report(g_state.channel, rssi, rlen);
-            }
+        } else if (g_cmdIdx < NRF24_CMD_BUF_LEN - 1) {
+            g_cmdBuf[g_cmdIdx++] = (char)toupper((int)c);
         }
     }
+    /* Solicitar siguiente byte */
+    UART2_read(handle, (void *)&g_rxChar, 1, NULL);
 }
 
 /* ── Tarea de comandos UART ──────────────────────────────────────────────────── */
@@ -456,21 +426,8 @@ static bool parse_hex_bytes(const char *s, uint8_t *out,
     return true;
 }
 
-void cmdTask(uintptr_t arg0, uintptr_t arg1)
+static void handle_command(void)
 {
-    (void)arg0; (void)arg1;
-
-    size_t idx = 0;
-    while (1) {
-        char c = 0;
-        size_t rxd = 0;
-        UART2_read(g_uart, &c, 1, &rxd);
-        if (rxd == 0) { continue; }
-
-        if (c == '\r' || c == '\n') {
-            g_cmdBuf[idx] = '\0';
-            idx = 0;
-
             /* ── Parsear comando ── */
             if (strncmp(g_cmdBuf, "CH:", 3) == 0) {
                 if (strcmp(g_cmdBuf + 3, "SCAN") == 0) {
@@ -595,48 +552,98 @@ void cmdTask(uintptr_t arg0, uintptr_t arg1)
                     uart_puts("[REPLAY] ERR rf_tx failed\r\n");
                 }
             }
-
-        } else if (idx < NRF24_CMD_BUF_LEN - 1) {
-            g_cmdBuf[idx++] = (char)toupper((int)c);
-        }
-    }
 }
 
 /* ── Entrypoint ────────────────────────────────────────────────────────────── */
-
-static uint8_t snifferTaskStack[NRF24_TASK_STACK_SIZE];
-static uint8_t cmdTaskStack[NRF24_CMD_TASK_STACK];
 
 int main(void)
 {
     /* Inicializar el BSP (Board Support Package) de TI */
     Board_init();
 
-    /* Inicializar UART2 a 115200 baud */
+    /* Inicializar NoRTOS (DPL bare-metal) */
+    NoRTOS_start();
+
+    /* Inicializar UART2 a 115200 baud (callback para RX, bloqueante para TX) */
     UART2_Params uartParams;
     UART2_Params_init(&uartParams);
-    uartParams.baudRate = NRF24_UART_BAUD;
-    uartParams.readMode = UART2_Mode_BLOCKING;
+    uartParams.baudRate  = NRF24_UART_BAUD;
+    uartParams.readMode  = UART2_Mode_CALLBACK;
+    uartParams.readCallback = uart_read_callback;
     uartParams.writeMode = UART2_Mode_BLOCKING;
     g_uart = UART2_open(CONFIG_UART2_0, &uartParams);
 
-    /* Crear tareas RTOS */
-    Task_Params taskParams;
+    /* Arrancar recepción asíncrona de primer byte */
+    UART2_read(g_uart, (void *)&g_rxChar, 1, NULL);
 
-    Task_Params_init(&taskParams);
-    taskParams.stack     = snifferTaskStack;
-    taskParams.stackSize = NRF24_TASK_STACK_SIZE;
-    taskParams.priority  = 2;
-    Task_construct(NULL, snifferTask, &taskParams, NULL);
+    /* Inicializar RF */
+    if (!rf_init()) {
+        uart_puts("[ERR] RF init failed, halting\r\n");
+        while (1) { ClockP_usleep(1000000); }
+    }
 
-    Task_Params_init(&taskParams);
-    taskParams.stack     = cmdTaskStack;
-    taskParams.stackSize = NRF24_CMD_TASK_STACK;
-    taskParams.priority  = 1;
-    Task_construct(NULL, cmdTask, &taskParams, NULL);
+    uart_puts("===== nRF24L01+ Sniffer (CC1352P7) =====\r\n");
+    uart_printf("[INIT] ch=%03u freq=%uMHz rate=%s mode=%s\r\n",
+                g_state.channel,
+                (unsigned)(2400u + g_state.channel),
+                g_state.rate == NRF24_RATE_1MBPS   ? "1M" :
+                g_state.rate == NRF24_RATE_2MBPS   ? "2M" : "250K",
+                g_state.mode == MODE_PROMISC  ? "PROMISC" :
+                g_state.mode == MODE_DIRECTED ? "DIRECTED" : "SCAN");
 
-    /* Arrancar el scheduler de TI-RTOS/FreeRTOS */
-    BIOS_start();
+    rf_set_sync_word_promisc();
+    rf_set_channel(g_state.channel);
 
-    return 0; /* no return */
+    /* ── Super-loop NoRTOS ─────────────────────────────────────────────────── */
+    while (1) {
+        /* Procesar comando UART pendiente */
+        if (g_cmdReady) {
+            handle_command();
+            g_cmdReady = false;
+            g_cmdIdx   = 0;
+            UART2_read(g_uart, (void *)&g_rxChar, 1, NULL);
+        }
+
+        if (g_state.mode == MODE_SCAN) {
+            /* Ciclar por todos los canales, 20 ms cada uno */
+            for (uint8_t ch = 0; ch < NRF24_MAX_CHANNELS; ch++) {
+                /* Atender comandos entre canales */
+                if (g_cmdReady) {
+                    handle_command();
+                    g_cmdReady = false;
+                    g_cmdIdx   = 0;
+                    UART2_read(g_uart, (void *)&g_rxChar, 1, NULL);
+                    if (g_state.mode != MODE_SCAN) { break; }
+                }
+
+                rf_set_channel(ch);
+                uint8_t pkts = 0;
+                int8_t  rssi_max = -120;
+
+                uint32_t t_start    = ClockP_getSystemTicks();
+                uint32_t tick_period = ClockP_getSystemTickPeriod();
+                uint32_t dwell_ticks = (NRF24_SCAN_DWELL_MS * 1000u) / tick_period;
+
+                while ((ClockP_getSystemTicks() - t_start) < dwell_ticks) {
+                    int8_t  rssi  = -120;
+                    uint8_t rlen  = 0;
+                    if (rx_one_packet(&rssi, &rlen, NRF24_SCAN_DWELL_MS)) {
+                        pkts++;
+                        if (rssi > rssi_max) { rssi_max = rssi; }
+                        process_and_report(ch, rssi, rlen);
+                    }
+                }
+                uart_printf("[SCAN] ch=%03u active=%u pkts=%u rssi_max=%+04d\r\n",
+                            ch, pkts > 0 ? 1u : 0u, pkts, (int)rssi_max);
+            }
+
+        } else {
+            /* Modo PROMISC o DIRECTED: recibir en bucle */
+            int8_t  rssi = -120;
+            uint8_t rlen = 0;
+            if (rx_one_packet(&rssi, &rlen, 1000u /* 1 s timeout */)) {
+                process_and_report(g_state.channel, rssi, rlen);
+            }
+        }
+    }
 }

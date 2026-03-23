@@ -70,19 +70,33 @@ para captura promiscua.
 
 ## Requisitos del entorno de desarrollo
 
-| Herramienta | Versión | Descarga |
+| Herramienta | Versión verificada | Descarga |
 |---|---|---|
-| TI SimpleLink CC13xx/CC26xx SDK | ≥ 7.10 | [dev.ti.com/tirex](https://dev.ti.com/tirex) |
-| TI SmartRF Studio 7 | ≥ 2.27 | [ti.com/tool/SMARTRFTM-STUDIO](https://www.ti.com/tool/SMARTRFTM-STUDIO) |
-| ARM GCC Toolchain | ≥ 9.3 | [developer.arm.com](https://developer.arm.com/downloads/-/gnu-rm) |
-| CMake | ≥ 3.21 | sistema/brew |
-| TI SysConfig | ≥ 1.16 | incluido con el SDK |
-| Code Composer Studio (opcional) | ≥ 12 | Import del proyecto CCS incluido |
+| TI SimpleLink CC13xx/CC26xx SDK | **8.32.00.07** | [dev.ti.com/tirex](https://dev.ti.com/tirex) |
+| TI SysConfig | **1.21.1** | incluido con el SDK |
+| ARM GNU Toolchain (GCC) | **15.2.1** (mingw-w64) | [developer.arm.com](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) |
+| CMake | **4.3+** | [cmake.org](https://cmake.org/download/) |
+| Ninja | **1.13.2+** | [ninja-build.org](https://ninja-build.org/) |
 
-### macOS (Homebrew)
-```bash
-brew install cmake ninja arm-none-eabi-gcc
-# SDK y SmartRF Studio: instalar desde TI directamente (tienen binarios macOS)
+> **Nota de RTOS:** Esta versión usa **NoRTOS** (bare-metal super-loop con DPL de TI).
+> FreeRTOS y TI-RTOS7 no tienen librería precompilada para GCC en este SDK.
+> La librería usada es `kernel/nortos/lib/gcc/m4f/nortos_cc13x2x7.a`.
+
+### Rutas de instalación asumidas (Windows)
+
+```
+C:\ti\simplelink_cc13xx_cc26xx_sdk_8_32_00_07\
+C:\ti\sysconfig_1.21.1\
+C:\Program Files\Arm\GNU Toolchain mingw-w64-x86_64-arm-none-eabi\bin\
+```
+
+El directorio `bin\` del toolchain debe estar en el `PATH` del sistema.
+
+### Añadir toolchain al PATH (PowerShell — una sola vez)
+
+```powershell
+$toolchain = "C:\Program Files\Arm\GNU Toolchain mingw-w64-x86_64-arm-none-eabi\bin"
+[Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";$toolchain", "User")
 ```
 
 ---
@@ -91,12 +105,18 @@ brew install cmake ninja arm-none-eabi-gcc
 
 ```
 firmware/nrf24_sniffer_cc1352p7/
-├── README.md                ← este archivo
-├── CMakeLists.txt           ← build system
-├── nrf24_sniffer.c          ← aplicación principal
-├── nrf24_esb.h              ← parser ESB portable (sin dependencias)
-├── smartrf_settings.h       ← configuración radio (salida SmartRF Studio)
-└── nrf24_sniffer.syscfg     ← SysConfig (UART, RF, Power)
+├── README.md                  ← este archivo
+├── CMakeLists.txt             ← build system (NoRTOS, GCC, Ninja)
+├── arm-none-eabi-toolchain.cmake  ← toolchain file para CMake
+├── cc13x2x7_nortos.lds        ← linker script NoRTOS (con aliases para startup_gcc.c)
+├── nrf24_sniffer.c            ← aplicación principal (super-loop NoRTOS)
+├── nrf24_sniffer.syscfg       ← SysConfig: UART2, RF, Power (Board LP_CC1352P7_1)
+├── nrf24_esb.h                ← parser ESB portable (sin dependencias)
+├── smartrf_settings.c/.h      ← configuración radio CC1352P7 (estructuras RF)
+└── build/                     ← directorio de compilación (generado)
+    ├── nrf24_sniffer          ← ELF
+    ├── nrf24_sniffer.hex      ← Intel HEX para flashear
+    └── nrf24_sniffer.bin      ← binario plano
 ```
 
 ---
@@ -170,41 +190,124 @@ como ESB probando address widths de 3, 4 y 5 bytes y validando el CRC.
 
 ## Paso 3 — Compilar y flashear
 
-```bat
-:: Windows — CMD (Command Prompt)
-:: Usar / en las rutas y todo en una sola línea (o con ^ para continuar)
-mkdir build && cd build
-cmake .. -DCMAKE_TOOLCHAIN_FILE=../arm-none-eabi-toolchain.cmake -DTICC13XX_SDK_PATH="C:/ti/simplelink_cc13xx_cc26xx_sdk_8_32_00_07" -DSYSCONFIG_PATH="C:/ti/sysconfig_1.21.1"
-
-cmake --build . --target nrf24_sniffer
-```
+### Compilación (Windows — PowerShell, verificado)
 
 ```powershell
-# Windows — PowerShell (línea de continuación con backtick `)
-mkdir build; cd build
-cmake .. `
-  -DCMAKE_TOOLCHAIN_FILE=../arm-none-eabi-toolchain.cmake `
+cd firmware\nrf24_sniffer_cc1352p7
+
+# Borrar build anterior si existe
+Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Name build | Out-Null
+cd build
+
+# Configurar (genera build.ninja)
+cmake .. -G "Ninja" `
+  -DCMAKE_TOOLCHAIN_FILE="../arm-none-eabi-toolchain.cmake" `
   -DTICC13XX_SDK_PATH="C:/ti/simplelink_cc13xx_cc26xx_sdk_8_32_00_07" `
   -DSYSCONFIG_PATH="C:/ti/sysconfig_1.21.1"
 
-cmake --build . --target nrf24_sniffer
+# Compilar
+cmake --build . --target nrf24_sniffer 2>&1
 ```
 
+Salida esperada al terminar:
+```
+[7/7] Linking C executable nrf24_sniffer; Generando nrf24_sniffer.hex y nrf24_sniffer.bin
+```
+
+Los artefactos generados en `build/`:
+- `nrf24_sniffer.hex` — para flashear con UniFlash o XDS110
+- `nrf24_sniffer.bin` — para flashear con OpenOCD
+
+### Flashear con TI UniFlash (recomendado)
+
+1. Abrir UniFlash → New Configuration → CC1352P7
+2. Conectar LaunchPad LP-CC1352P7 por USB
+3. Browse → seleccionar `build/nrf24_sniffer.hex`
+4. Click **Load Image**
+
+### Flashear con OpenOCD
+
 ```bash
-# macOS / Linux — bash/zsh
-mkdir build && cd build
-cmake .. \
-  -DCMAKE_TOOLCHAIN_FILE=../arm-none-eabi-toolchain.cmake \
-  -DTICC13XX_SDK_PATH=/home/user/ti/simplelink_cc13xx_cc26xx_sdk_8_32_00_07 \
-  -DSYSCONFIG_PATH=/home/user/ti/sysconfig_1.21.1
-
-cmake --build . --target nrf24_sniffer
-
-# Flash con catnip (si se añade el .hex al repositorio de catnip)
-catnip flash nrf24-sniffer
-# O directamente con uniflash/openocd:
 openocd -f board/ti_cc1352p7_launchpad.cfg \
         -c "program build/nrf24_sniffer.hex verify reset exit"
+```
+
+---
+
+## Decisiones de diseño y problemas resueltos
+
+Esta sección documenta los problemas encontrados durante el desarrollo para
+facilitar la reproducibilidad.
+
+### 1. Elección de RTOS: NoRTOS (bare-metal)
+
+El SDK 8.32 solo incluye librerías FreeRTOS precompiladas para **IAR**, no para GCC:
+```
+kernel/freertos/lib/iar/m4f/freertos.a   ← solo IAR
+kernel/nortos/lib/gcc/m4f/nortos_cc13x2x7.a  ← GCC ✓
+```
+TI-RTOS7 (`sysbios.a` para GCC) solo contiene stubs de ensamblador; el runtime
+completo (Clock, Task, BIOS_start) requiere la cadena XDC/CCS. Por tanto:
+- **Se usó NoRTOS** con un super-loop en `main()` y UART2 en modo CALLBACK.
+- La recepción de comandos UART es asíncrona (callback `uart_read_callback`).
+- El timing de escaneo usa `ClockP_getSystemTicks()` / `ClockP_getSystemTickPeriod()`.
+
+### 2. Linker script: cc13x2x7_nortos.lds (copia local)
+
+El linker script genérico `cc13x2x7.lds` del SDK no define las secciones DMA
+requeridas por `UDMACC26XX.h` bajo GCC. Se usó como base el script de los
+ejemplos NoRTOS para LP_CC1352P7_1, añadiendo aliases de símbolos requeridos
+por `startup_gcc.c`:
+
+| Símbolo en startup_gcc.c | Definido como |
+|---|---|
+| `_ldata`  | `LOADADDR(.data)` |
+| `_data`   | inicio de `.data` |
+| `_edata`  | fin de `.data` |
+| `_bss`    | inicio de `.bss` |
+| `_ebss`   | fin de `.bss` |
+| `_estack` | fin de `.stack` |
+
+El archivo `cc13x2x7_nortos.lds` está versionado en el repositorio.
+
+### 3. SysConfig CLI: flags requeridos
+
+```
+sysconfig_cli.bat \
+  --product <SDK>/.metadata/product.json \
+  --board /ti/boards/LP_CC1352P7_1 \     ← guion bajo, NO guion
+  --rtos nortos \
+  --compiler gcc \
+  --output <dir> \
+  <archivo.syscfg>
+```
+
+Errores comunes:
+- `LP-CC1352P7-1` (guiones) no está en el catálogo → usar `LP_CC1352P7_1`
+- Omitir `--rtos nortos` genera código para TI-RTOS7 incompatible con nortos.a
+
+### 4. Stamp file para evitar el bucle infinito de Ninja
+
+SysConfig genera archivos con timestamps nuevos en cada ejecución. Sin un stamp
+file, Ninja entra en un bucle infinito ("manifest still dirty after 100 tries").
+El CMakeLists.txt usa el patrón:
+```cmake
+add_custom_command(
+    OUTPUT "${SYSCONFIG_STAMP}"
+    COMMAND sysconfig_cli.bat ...
+    COMMAND ${CMAKE_COMMAND} -E touch "${SYSCONFIG_STAMP}"
+    BYPRODUCTS ti_drivers_config.c ti_drivers_config.h
+    ...
+)
+```
+
+### 5. Flags del linker
+
+```cmake
+--specs=nano.specs   # newlib-nano (printf reducido)
+--specs=nosys.specs  # stub de _sbrk (evita "undefined reference to _sbrk")
+-nostartfiles        # startup_gcc.c incluido manualmente en SOURCES
 ```
 
 ---
