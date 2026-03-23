@@ -204,7 +204,7 @@ SECTIONS {
         __data_load__ = LOADADDR (.data);
         __data_start__ = .;
         /* Aliases for startup_gcc.c */
-        _ldata = __data_load__;
+        _ldata = ABSOLUTE(__data_load__);
         _data  = __data_start__;
         *(.data)
         *(.data.*)

@@ -26,6 +26,7 @@
  *     RATE:1M\r\n           → 1 Mbps
  *     RATE:2M\r\n           → 2 Mbps
  *     RATE:250K\r\n         → 250 kbps
+ *     BSL\r\n               → entrar en Serial Bootloader (BSL) por software
  */
 
 #include <stdint.h>
@@ -50,6 +51,9 @@
 #include <ti/devices/cc13x2x7_cc26x2x7/driverlib/rf_prop_cmd.h>
 #include <ti/devices/cc13x2x7_cc26x2x7/driverlib/rf_data_entry.h>
 #include <ti/devices/cc13x2x7_cc26x2x7/driverlib/rfc.h>
+#include <ti/devices/cc13x2x7_cc26x2x7/driverlib/sys_ctrl.h>     /* SysCtrlSystemReset */
+#include <ti/devices/cc13x2x7_cc26x2x7/inc/hw_aon_pmctl.h>        /* AON_PMCTL_O_RESETCTL, BOOT_DET bits */
+#include <ti/devices/cc13x2x7_cc26x2x7/inc/hw_memmap.h>           /* HWREG, AON_PMCTL_BASE */
 
 /* Nuestros headers */
 #include "smartrf_settings.h"
@@ -500,6 +504,30 @@ static void handle_command(void)
             } else if (strcmp(g_cmdBuf, "RATE:250K") == 0) {
                 g_state.rate = NRF24_RATE_250KBPS;
                 uart_puts("[CMD] rate=250K (re-flash required for RF change)\r\n");
+
+            /* ── BSL — Software bootloader entry (para re-flashear sin pin físico) ─
+             * Permite que catnip / cc2538-bsl entren en BSL mode sin necesidad de
+             * tener el pin DIO13 correctamente configurado en CCFG.
+             *
+             * Mecanismo: se escriben los flags BOOT_DET_1=1, BOOT_DET_0=0 en el
+             * registro AON_PMCTL.RESETCTL. El ROM bootloader del CC1352P7 detecta
+             * esta combinación al arrancar y entra en el Serial BSL en lugar de
+             * iniciar el firmware principal.
+             *
+             * Uso (desde Python/terminal):
+             *   echo "BSL" > /dev/cu.usbmodem31201   (ó serial_write("BSL\r\n"))
+             * Catnip lo puede usar automáticamente si lo envía en enter_bootloader().
+             */
+            } else if (strcmp(g_cmdBuf, "BSL") == 0) {
+                uart_puts("[CMD] entering BSL — reset into bootloader\r\n");
+                ClockP_usleep(10000u); /* ~10 ms: tiempo para que UART TX vacíe */
+                /* Señalar al ROM que entre en BSL en el próximo reset:           *
+                 * BOOT_DET_1=1 + BOOT_DET_0=0 → ROM entra en Serial BSL         */
+                HWREG(AON_PMCTL_BASE + AON_PMCTL_O_RESETCTL) =
+                    AON_PMCTL_RESETCTL_BOOT_DET_1_SET_M |
+                    AON_PMCTL_RESETCTL_BOOT_DET_0_CLR_M;
+                SysCtrlSystemReset(); /* reset inmediato */
+                /* (no return — el chip se reinicia) */
 
             /* ── TX:ADDR_HEX:PAYLOAD_HEX — spoof / inyección MouseJack ── */
             } else if (strncmp(g_cmdBuf, "TX:", 3) == 0) {
