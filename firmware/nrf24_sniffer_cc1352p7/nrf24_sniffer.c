@@ -48,6 +48,7 @@
 /* Device-specific */
 #include <ti/devices/cc13x2x7_cc26x2x7/driverlib/rf_prop_mailbox.h>
 #include <ti/devices/cc13x2x7_cc26x2x7/driverlib/rf_prop_cmd.h>
+#include <ti/devices/cc13x2x7_cc26x2x7/driverlib/rf_data_entry.h>
 #include <ti/devices/cc13x2x7_cc26x2x7/driverlib/rfc.h>
 
 /* Nuestros headers */
