@@ -27,6 +27,9 @@
  *     RATE:2M\r\n           → 2 Mbps
  *     RATE:250K\r\n         → 250 kbps
  *     BSL\r\n               → resetear CC1352P7 a modo BSL (re-flash sin botones)
+ */
+
+#include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
