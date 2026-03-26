@@ -49,7 +49,7 @@ const PowerCC26X2_Config PowerCC26X2_config = {
     .enablePolicy       = true,
     .calibrateRCOSC_LF  = true,
     .calibrateRCOSC_HF  = true,
-    .vddrRechargeMargin = 0,
+    /* vddrRechargeMargin eliminado en SDK 8.x */
     .enableTCXOFxn      = NULL,
 };
 
@@ -80,19 +80,8 @@ const RFCC26XX_HWAttrsV2 RFCC26XX_hwAttrs = {
  * ═══════════════════════════════════════════════════════════════════════════ */
 #include <ti/drivers/dma/UDMACC26XX.h>
 
-/*
- *  Tabla de control µDMA: 64 entradas × 16 bytes = 1024 bytes.
- *  Debe estar alineada a 1024 bytes (requisito hardware).
- *  UDMACC26XX_init() escribe su dirección en el registro UDMA0_BASE + CTRL,
- *  por lo que el linker solo necesita que esté en SRAM (no en dirección fija).
- *
- *  Asignación de canales µDMA para CC1352P7 (ver TRM §UDMA Channel Assignments):
- *    Canal 1 → UART0 RX  (DMA_UART0_RX_CONTROL_TABLE_ENTRY_ADDRESS = BASE+0x10)
- *    Canal 2 → UART0 TX  (DMA_UART0_TX_CONTROL_TABLE_ENTRY_ADDRESS = BASE+0x20)
- */
-static tDMAControlTable dmaControlTable[64]
-    __attribute__((aligned(1024)));
-
+/* En SDK 8.x, UDMACC26XX gestiona internamente la tabla de control DMA.
+ * No es necesario declararla aquí ni pasarla via pControlTable. */
 UDMACC26XX_Object udmaCC26XXObjects[1];
 
 const UDMACC26XX_HWAttrs udmaCC26XXHWAttrs = {
@@ -100,7 +89,7 @@ const UDMACC26XX_HWAttrs udmaCC26XXHWAttrs = {
     .powerMngrId   = PowerCC26XX_PERIPH_UDMA,
     .intNum        = INT_DMA_ERR,
     .intPriority   = (~0),
-    .pControlTable = dmaControlTable,
+    /* pControlTable eliminado en SDK 8.x: el driver gestiona la tabla internamente */
 };
 
 const UDMACC26XX_Config UDMACC26XX_config[1] = {
@@ -136,7 +125,7 @@ const UART2CC26X2_HWAttrs uart2CC26X2HWAttrs[CONFIG_UART2_COUNT] = {
         .baseAddr      = UART0_BASE,
         .intNum        = INT_UART0_COMB,
         .intPriority   = (~0),
-        .swiPriority   = 0,
+        /* swiPriority eliminado en SDK 8.x */
         .flowControl   = UART2_FLOWCTRL_NONE,
         .rxBufPtr      = uart2RxBuf0,
         .rxBufSize     = sizeof(uart2RxBuf0),
@@ -146,8 +135,7 @@ const UART2CC26X2_HWAttrs uart2CC26X2HWAttrs[CONFIG_UART2_COUNT] = {
         .txPin         = (uint_least8_t)(IOID_13 & 0xFFu),   /* DIO13 = 13 */
         .ctsPin        = (uint_least8_t)(IOID_UNUSED & 0xFFu),
         .rtsPin        = (uint_least8_t)(IOID_UNUSED & 0xFFu),
-        .txDmaEntry    = &dmaControlTable[UDMA_CHAN_UART0_TX],
-        .rxDmaEntry    = &dmaControlTable[UDMA_CHAN_UART0_RX],
+        /* txDmaEntry / rxDmaEntry eliminados en SDK 8.x: DMA gestionado internamente */
         .rxChannelMask = (1u << UDMA_CHAN_UART0_RX),
         .txChannelMask = (1u << UDMA_CHAN_UART0_TX),
         .powerId       = PowerCC26XX_PERIPH_UART0,
@@ -172,7 +160,7 @@ void Board_init(void)
     Power_init();
 
     /* 2. Controlador µDMA (necesario para UART2 con DMA) */
-    UDMACC26XX_init(&UDMACC26XX_config[0]);
+    UDMACC26XX_init((UDMACC26XX_Handle)&UDMACC26XX_config[0]);
 }
 
 void Board_initGeneral(void)

@@ -152,7 +152,10 @@ set(INCLUDES
     "${TICC13XX_SDK_PATH}/source/ti/devices/${DEVICE_FAMILY}"
     "${TICC13XX_SDK_PATH}/source/ti/devices/${DEVICE_FAMILY}/driverlib"
     "${TICC13XX_SDK_PATH}/source/ti/drivers"
-    "${TICC13XX_SDK_PATH}/source/ti/posix/gcc"
+    # source/ti/posix/gcc intencionalmente excluido: su sys/types.h usa
+    # '#include <../include/sys/types.h>' que choca con el layout de
+    # libnewlib-arm-none-eabi en Ubuntu. En bare-metal/NoRTOS no necesitamos
+    # las APIs POSIX de TI (pthread, semaphore, etc.).
     "${TICC13XX_SDK_PATH}/kernel/nortos"
     "${TICC13XX_SDK_PATH}/kernel/nortos/posix"
 )
