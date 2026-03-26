@@ -107,9 +107,11 @@ jobs:
           if [ -d "${{ env.SDK_INSTALL_DIR }}/source/ti/drivers" ]; then
             SDK_FOUND="${{ env.SDK_INSTALL_DIR }}"
           else
+            # El F2 SDK instala en un subdir: _ti_sdk/simplelink_xxx/source/ti/drivers
+            # drivers está a profundidad 4 desde SDK_INSTALL_DIR → maxdepth 4
             SDK_FOUND=$(find "${{ env.SDK_INSTALL_DIR }}" \
-                          -maxdepth 3 -type d -name "drivers" \
-                          -path "*/ti/drivers" \
+                          -maxdepth 4 -type d -name "drivers" \
+                          -path "*/source/ti/drivers" \
                           2>/dev/null | head -1 | sed 's|/source/ti/drivers$||' || true)
           fi
 
@@ -131,10 +133,11 @@ jobs:
           if [ -d "${{ env.SDK_INSTALL_DIR }}/source/ti/drivers" ]; then
             SDK_ROOT="${{ env.SDK_INSTALL_DIR }}"
           else
+            # drivers está a profundidad 4 desde SDK_INSTALL_DIR → maxdepth 4
             SDK_ROOT=$(find "${{ env.SDK_INSTALL_DIR }}" \
-                          -maxdepth 2 -type d -name "source" \
-                          -path "*/source/ti" \
-                          2>/dev/null | head -1 | sed 's|/source/ti$||' || true)
+                          -maxdepth 4 -type d -name "drivers" \
+                          -path "*/source/ti/drivers" \
+                          2>/dev/null | head -1 | sed 's|/source/ti/drivers$||' || true)
           fi
 
           if [ -n "${SDK_ROOT}" ] && [ -d "${SDK_ROOT}/source/ti/drivers" ]; then
