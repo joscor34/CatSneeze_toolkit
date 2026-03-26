@@ -1,17 +1,50 @@
 cmake_minimum_required(VERSION 3.21)
 
-# ── Rutas del SDK TI (ajustar si la instalación es diferente) ────────────────
-# Se pueden pasar desde línea de comandos:
-#   -DTICC13XX_SDK_PATH="C:/ti/simplelink_cc13xx_cc26xx_sdk_8_32_00_07"
-#   -DSYSCONFIG_PATH="C:/ti/sysconfig_1.21.1"
+# ── Rutas del SDK TI ─────────────────────────────────────────────────────────
+# Prioridad de resolución:
+#   1. -DTICC13XX_SDK_PATH=<path> en la línea de comandos
+#   2. Variable de entorno TICC13XX_SDK_PATH (ideal para CI/GitHub Actions)
+#   3. Rutas por defecto según el sistema operativo
+#
+# Equivalente para SysConfig con SYSCONFIG_PATH / SYSCONFIG_PATH env var.
+#
+# Opción alternativa para CI sin SysConfig instalado:
+#   -DUSE_PREGENERATED_SYSCFG=ON
+#   → usa los archivos pre-generados en syscfg_pregenerated/
+
+# SDK
 if(NOT DEFINED TICC13XX_SDK_PATH)
-    set(TICC13XX_SDK_PATH "C:/ti/simplelink_cc13xx_cc26xx_sdk_8_32_00_07"
-        CACHE PATH "Ruta al TI SimpleLink CC13xx/CC26xx SDK")
+    if(DEFINED ENV{TICC13XX_SDK_PATH})
+        set(TICC13XX_SDK_PATH "$ENV{TICC13XX_SDK_PATH}"
+            CACHE PATH "Ruta al TI SimpleLink CC13xx/CC26xx SDK (desde env)")
+    elseif(WIN32)
+        set(TICC13XX_SDK_PATH "C:/ti/simplelink_cc13xx_cc26xx_sdk_8_32_00_07"
+            CACHE PATH "Ruta al TI SimpleLink CC13xx/CC26xx SDK")
+    else()
+        set(TICC13XX_SDK_PATH "$ENV{HOME}/ti/simplelink_cc13xx_cc26xx_sdk_8_32_00_07"
+            CACHE PATH "Ruta al TI SimpleLink CC13xx/CC26xx SDK")
+    endif()
 endif()
+
+# SysConfig
 if(NOT DEFINED SYSCONFIG_PATH)
-    set(SYSCONFIG_PATH "C:/ti/sysconfig_1.21.1"
-        CACHE PATH "Ruta al TI SysConfig")
+    if(DEFINED ENV{SYSCONFIG_PATH})
+        set(SYSCONFIG_PATH "$ENV{SYSCONFIG_PATH}"
+            CACHE PATH "Ruta al TI SysConfig (desde env)")
+    elseif(WIN32)
+        set(SYSCONFIG_PATH "C:/ti/sysconfig_1.21.1"
+            CACHE PATH "Ruta al TI SysConfig")
+    else()
+        # En Linux/macOS el SysConfig suele venir dentro del SDK
+        set(SYSCONFIG_PATH "${TICC13XX_SDK_PATH}/tools/sysconfig"
+            CACHE PATH "Ruta al TI SysConfig")
+    endif()
 endif()
+
+# ── Opción: archivos SysConfig pre-generados (CI sin SysConfig instalado) ────
+option(USE_PREGENERATED_SYSCFG
+    "Usar archivos ti_drivers_config.* pre-generados en syscfg_pregenerated/ en lugar de ejecutar SysConfig"
+    OFF)
 
 # ── Configuración del dispositivo ────────────────────────────────────────────
 set(DEVICE_FAMILY  "cc13x2x7_cc26x2x7")
@@ -23,47 +56,77 @@ set(DEVICE_DEFINE  "DeviceFamily_CC13X2X7")
 project(nrf24_sniffer C ASM)
 set(CMAKE_C_STANDARD 99)
 
-# ── Ejecutar SysConfig para generar ti_drivers_config.c / .h ─────────────────
-find_program(SYSCONFIG_CMD
-    NAMES sysconfig_cli.bat sysconfig_cli sysconfig_cli.sh
-    PATHS "${SYSCONFIG_PATH}"
-    NO_DEFAULT_PATH
-    REQUIRED
-)
-
+# ── SysConfig: generar ti_drivers_config.c / .h  ─────────────────────────────
 set(SYSCFG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/nrf24_sniffer.syscfg")
-set(SYSCFG_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/syscfg")
 
-file(MAKE_DIRECTORY "${SYSCFG_OUTPUT_DIR}")
+if(USE_PREGENERATED_SYSCFG)
+    # ── Modo CI: usar archivos pre-generados (no requiere SysConfig instalado) ──
+    set(SYSCFG_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/syscfg_pregenerated")
+    if(NOT EXISTS "${SYSCFG_OUTPUT_DIR}/ti_drivers_config.c")
+        message(FATAL_ERROR
+            "USE_PREGENERATED_SYSCFG=ON pero no existe "
+            "${SYSCFG_OUTPUT_DIR}/ti_drivers_config.c\n"
+            "Genera los archivos con SysConfig localmente y vuelve a intentarlo.")
+    endif()
+    message(STATUS "SysConfig: usando archivos pre-generados en ${SYSCFG_OUTPUT_DIR}")
+    # Target dummy para satisfacer add_dependencies(nrf24_sniffer sysconfig_gen)
+    add_custom_target(sysconfig_gen)
 
-# Stamp file pattern: evita el bucle "build.ninja still dirty" en Windows.
-# SysConfig genera archivos con timestamps nuevos; usar un stamp file permite
-# que Ninja controle cuándo re-ejecutar SysConfig sin disparar re-configure.
-set(SYSCONFIG_STAMP "${SYSCFG_OUTPUT_DIR}/.sysconfig_stamp")
+else()
+    # ── Modo normal: ejecutar SysConfig ──────────────────────────────────────
+    # Busca sysconfig_cli en Windows (.bat), Linux (.sh) y macOS (.sh)
+    find_program(SYSCONFIG_CMD
+        NAMES
+            sysconfig_cli.bat          # Windows CCS bundled
+            sysconfig_cli.sh           # Linux / macOS installer
+            sysconfig_cli              # cualquier plataforma (sin extensión)
+        PATHS
+            "${SYSCONFIG_PATH}"
+            "${SYSCONFIG_PATH}/bin"
+            "${TICC13XX_SDK_PATH}/tools/sysconfig"
+            "${TICC13XX_SDK_PATH}/tools/sysconfig/bin"
+        NO_DEFAULT_PATH
+    )
 
-add_custom_command(
-    OUTPUT "${SYSCONFIG_STAMP}"
-    COMMAND "${SYSCONFIG_CMD}"
-        --product "${TICC13XX_SDK_PATH}/.metadata/product.json"
-        --board "${DEVICE_BOARD}"
-        --rtos nortos
-        --compiler gcc
-        --output "${SYSCFG_OUTPUT_DIR}"
-        "${SYSCFG_FILE}"
-    COMMAND ${CMAKE_COMMAND} -E touch "${SYSCONFIG_STAMP}"
-    DEPENDS "${SYSCFG_FILE}"
-    BYPRODUCTS
+    if(NOT SYSCONFIG_CMD)
+        message(FATAL_ERROR
+            "SysConfig CLI no encontrado.\n"
+            "Opciones:\n"
+            "  1. Instala TI SysConfig y pasa -DSYSCONFIG_PATH=<ruta>\n"
+            "  2. Usa los archivos pre-generados: -DUSE_PREGENERATED_SYSCFG=ON\n"
+            "     (requiere que syscfg_pregenerated/ exista en el fuente)")
+    endif()
+
+    set(SYSCFG_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/syscfg")
+    file(MAKE_DIRECTORY "${SYSCFG_OUTPUT_DIR}")
+
+    # Stamp file: evita el bucle "build.ninja still dirty"
+    set(SYSCONFIG_STAMP "${SYSCFG_OUTPUT_DIR}/.sysconfig_stamp")
+
+    add_custom_command(
+        OUTPUT "${SYSCONFIG_STAMP}"
+        COMMAND "${SYSCONFIG_CMD}"
+            --product "${TICC13XX_SDK_PATH}/.metadata/product.json"
+            --board "${DEVICE_BOARD}"
+            --rtos nortos
+            --compiler gcc
+            --output "${SYSCFG_OUTPUT_DIR}"
+            "${SYSCFG_FILE}"
+        COMMAND ${CMAKE_COMMAND} -E touch "${SYSCONFIG_STAMP}"
+        DEPENDS "${SYSCFG_FILE}"
+        BYPRODUCTS
+            "${SYSCFG_OUTPUT_DIR}/ti_drivers_config.c"
+            "${SYSCFG_OUTPUT_DIR}/ti_drivers_config.h"
+        COMMENT "Ejecutando SysConfig para generar ti_drivers_config.*..."
+    )
+
+    add_custom_target(sysconfig_gen DEPENDS "${SYSCONFIG_STAMP}")
+
+    set_source_files_properties(
         "${SYSCFG_OUTPUT_DIR}/ti_drivers_config.c"
-        "${SYSCFG_OUTPUT_DIR}/ti_drivers_config.h"
-    COMMENT "Generando configuración TI drivers con SysConfig..."
-)
-
-add_custom_target(sysconfig_gen DEPENDS "${SYSCONFIG_STAMP}")
-
-set_source_files_properties(
-    "${SYSCFG_OUTPUT_DIR}/ti_drivers_config.c"
-    PROPERTIES GENERATED TRUE
-)
+        PROPERTIES GENERATED TRUE
+    )
+endif()
 
 # ── NoRTOS (bare-metal, super-loop) ──────────────────────────────────────────
 
@@ -99,16 +162,25 @@ set(INCLUDES
 # CC1352P7. Sin estos overrides, ccfg.c del SDK compila con
 # BL_BACKDOOR_ENABLE=0x00, que deshabilita el BSL por hardware y hace
 # imposible re-flashear con catnip/cc2538-bsl sin JTAG.
-# El CatSniffer usa DIO13 (pin 0x0D) como pin de trigger, activo en bajo.
+# El CatSniffer V3 usa DIO15 (pin 0x0F) como pin BSL backdoor, activo en bajo.
+# El RP2040 (GPIO2=CC1352_BOOT) tira DIO15 a GND antes de RESET para activar BSL.
+# Confirmado en simple_central.syscfg oficial CatSniffer V3:
+#   CCFG.dioBootloaderBackdoor = 15
 # Referencia: TI SDK — source/ti/devices/cc13x2x7_cc26x2x7/startup_files/ccfg.c
+#
+# xoscCapArrayDelta: calibración del cristal XOSC_HF para LP_CC1352P7_1.
+# Confirmado en lprf_ccfg_settings.js del SDK (xoscCapArrayDelta=0xC1).
 set(DEVICE_DEFINES
     "${DEVICE_DEFINE}"
     # BSL backdoor habilitado → permite re-flashear via RP2040/catnip
     "SET_CCFG_BL_CONFIG_BL_ENABLE=0xC5"
     "SET_CCFG_BL_CONFIG_BOOTLOADER_ENABLE=0xC5"
     "SET_CCFG_BL_CONFIG_BL_BACKDOOR_ENABLE=0xC5"
-    "SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN=0x0D"
+    "SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN=0x0F"       # DIO15 — CatSniffer V3
     "SET_CCFG_BL_CONFIG_BL_BACKDOOR_LEVEL=0x0"
+    # Calibración del cristal XOSC_HF (LP_CC1352P7_1 / CatSniffer V3)
+    "SET_CCFG_MODE_CONF_XOSC_CAP_MOD=0"             # 0 = modificar cap array
+    "SET_CCFG_MODE_CONF_XOSC_CAPARRAY_DELTA=0xC1"   # delta LP_CC1352P7_1
 )
 
 # ── Librerías del SDK ─────────────────────────────────────────────────────────
