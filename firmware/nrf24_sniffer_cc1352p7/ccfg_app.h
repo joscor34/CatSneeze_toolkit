@@ -8,9 +8,11 @@
  * BL_BACKDOOR_ENABLE=0x00, que deshabilita el BSL por hardware e impide
  * re-flashear el chip con catnip/cc2538-bsl sin JTAG.
  *
- * Pin BSL del CatSniffer: DIO13 (0x0D), activo en nivel bajo.
- * El RP2040 tira este pin a GND antes de hacer RESET al CC1352P7 para
- * activar el bootloader serial (BSL) en lugar del firmware principal.
+ * Pin BSL del CatSniffer V3: DIO15 (0x0F), activo en nivel bajo.
+ * El RP2040 (GPIO2=CC1352_BOOT) tira DIO15 a GND antes de hacer RESET al CC1352P7
+ * para activar el bootloader serial (BSL) en lugar del firmware principal.
+ * Confirmado en simple_central.syscfg del firmware oficial CatSniffer V3:
+ *   CCFG.dioBootloaderBackdoor = 15
  *
  * Referencia: TI SDK — source/ti/devices/cc13x2x7_cc26x2x7/startup_files/ccfg.c
  *
@@ -18,8 +20,10 @@
  *   SET_CCFG_BL_CONFIG_BL_ENABLE            = 0xC5   BSL habilitado
  *   SET_CCFG_BL_CONFIG_BOOTLOADER_ENABLE    = 0xC5   bootloader habilitado
  *   SET_CCFG_BL_CONFIG_BL_BACKDOOR_ENABLE   = 0xC5   backdoor por pin habilitado
- *   SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN      = 0x0D   pin DIO13
+ *   SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN      = 0x0F   pin DIO15 (CatSniffer V3)
  *   SET_CCFG_BL_CONFIG_BL_BACKDOOR_LEVEL    = 0x0    activo en bajo
+ *   SET_CCFG_MODE_CONF_XOSC_CAP_MOD         = 0      modificar cap array XOSC
+ *   SET_CCFG_MODE_CONF_XOSC_CAPARRAY_DELTA  = 0xC1   delta cristal LP_CC1352P7_1
  */
 #ifndef CCFG_APP_H
 #define CCFG_APP_H
@@ -32,8 +36,13 @@
 #define SET_CCFG_BL_CONFIG_BL_ENABLE            0xC5
 #define SET_CCFG_BL_CONFIG_BOOTLOADER_ENABLE    0xC5
 #define SET_CCFG_BL_CONFIG_BL_BACKDOOR_ENABLE   0xC5
-#define SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN      0x0D
+#define SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN      0x0F   /* DIO15 — CatSniffer V3 */
 #define SET_CCFG_BL_CONFIG_BL_BACKDOOR_LEVEL    0x0
+#endif
+
+#ifndef SET_CCFG_MODE_CONF_XOSC_CAP_MOD
+#define SET_CCFG_MODE_CONF_XOSC_CAP_MOD        0
+#define SET_CCFG_MODE_CONF_XOSC_CAPARRAY_DELTA 0xC1    /* LP_CC1352P7_1 */
 #endif
 
 #endif /* CCFG_APP_H */
