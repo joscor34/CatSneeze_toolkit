@@ -152,12 +152,12 @@ set(INCLUDES
     "${TICC13XX_SDK_PATH}/source/ti/devices/${DEVICE_FAMILY}"
     "${TICC13XX_SDK_PATH}/source/ti/devices/${DEVICE_FAMILY}/driverlib"
     "${TICC13XX_SDK_PATH}/source/ti/drivers"
-    # source/ti/posix/gcc intencionalmente excluido: su sys/types.h usa
-    # '#include <../include/sys/types.h>' que choca con el layout de
-    # libnewlib-arm-none-eabi en Ubuntu. En bare-metal/NoRTOS no necesitamos
-    # las APIs POSIX de TI (pthread, semaphore, etc.).
+    # Ambos directorios posix del SDK (source/ti/posix/gcc y kernel/nortos/posix)
+    # intencionalmente excluidos: su sys/types.h usa '#include <../include/sys/types.h>'
+    # con ruta relativa al layout de la toolchain TI, incompatible con
+    # libnewlib-arm-none-eabi de Ubuntu. En bare-metal/NoRTOS no usamos POSIX.
     "${TICC13XX_SDK_PATH}/kernel/nortos"
-    "${TICC13XX_SDK_PATH}/kernel/nortos/posix"
+    # kernel/nortos/posix excluido por el mismo motivo que posix/gcc
 )
 
 # ── Defines del dispositivo ───────────────────────────────────────────────────
