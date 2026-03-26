@@ -9,7 +9,7 @@
  * │  Ver README.md para instrucciones de build completas                │
  * └─────────────────────────────────────────────────────────────────────┘
  *
- * Protocolo UART (115200 8N1):
+ * Protocolo UART (921600 8N1):
  *   Líneas del firmware → host:
  *     [INIT] ch=076 freq=2476MHz rate=1M mode=PROMISC
  *     [PKT]  ch=076 rssi=-055 len=37 raw=AABBCC...
@@ -26,9 +26,7 @@
  *     RATE:1M\r\n           → 1 Mbps
  *     RATE:2M\r\n           → 2 Mbps
  *     RATE:250K\r\n         → 250 kbps
- */
-
-#include <stdint.h>
+ *     BSL\r\n               → resetear CC1352P7 a modo BSL (re-flash sin botones)
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
@@ -47,6 +45,8 @@
 
 /* Device-specific */
 #include <ti/devices/cc13x2x7_cc26x2x7/driverlib/rf_prop_mailbox.h>
+#include <ti/devices/cc13x2x7_cc26x2x7/driverlib/sys_ctrl.h>
+#include <ti/devices/cc13x2x7_cc26x2x7/inc/hw_aon_pmctl.h>
 #include <ti/devices/cc13x2x7_cc26x2x7/driverlib/rf_prop_cmd.h>
 #include <ti/devices/cc13x2x7_cc26x2x7/driverlib/rf_data_entry.h>
 #include <ti/devices/cc13x2x7_cc26x2x7/driverlib/rfc.h>
@@ -559,6 +559,19 @@ static void handle_command(void)
                 }
 
             /* ── REPLAY:RAW_HEX — retransmitir frame crudo capturado ── */
+            /* ── BSL — resetear a modo bootloader serial (re-flash sin botones) ── */
+            } else if (strncmp(g_cmdBuf, "BSL", 3) == 0) {
+                /*
+                 * Escribe el flag de reset-a-BSL en AON_PMCTL y lanza
+                 * SysCtrlSystemReset(). El CC1352P7 arranca en modo BSL
+                 * sin necesidad de pulsar RESET_CC1 + SW1.
+                 * Permite re-flashear con: catnip flash <firmware.hex>
+                 */
+                uart_puts("[CMD] entering BSL mode...\r\n");
+                HWREG(AON_PMCTL_BASE + AON_PMCTL_O_RESETCTL) =
+                    HWREG(AON_PMCTL_BASE + AON_PMCTL_O_RESETCTL) | 0x2u;
+                SysCtrlSystemReset(); /* no retorna */
+
             } else if (strncmp(g_cmdBuf, "REPLAY:", 7) == 0) {
                 /*
                  * Formato: REPLAY:RAW_HEX

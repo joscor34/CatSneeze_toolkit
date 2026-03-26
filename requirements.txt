@@ -1,3 +1,6 @@
 pyserial>=3.5
 rich>=13.0
 click>=8.1
+# Flash directo al CC1352P7 sin catnip (no está en PyPI):
+cc2538-bsl @ git+https://github.com/JelmerT/cc2538-bsl.git
+intelhex>=2.3

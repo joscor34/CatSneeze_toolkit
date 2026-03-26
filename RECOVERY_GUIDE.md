@@ -228,4 +228,4 @@ Ctrl+C en Terminal 1
 - [ ] Verificar salida UART del CC1352P7 (`[INIT] ch=076...`)
 - [ ] Recompilar firmware con CCFG fix (Windows + TI SDK)
 - [ ] Flashear nuevo hex con catnip (test auto-BSL)
-- [ ] Añadir comando BSL por UART a `nrf24_sniffer.c`
+- [x] Añadir comando BSL por UART a `nrf24_sniffer.c`
