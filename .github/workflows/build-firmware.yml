@@ -43,10 +43,11 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            gcc-arm-none-eabi      \
-            binutils-arm-none-eabi \
-            libatomic1             \
-            cmake                  \
+            gcc-arm-none-eabi        \
+            binutils-arm-none-eabi   \
+            libnewlib-arm-none-eabi  \
+            libatomic1               \
+            cmake                    \
             ninja-build
           arm-none-eabi-gcc --version
           cmake --version
