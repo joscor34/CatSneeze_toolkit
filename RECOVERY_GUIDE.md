@@ -91,7 +91,7 @@ Si aparece eso, el firmware funciona correctamente.
 ## Paso 4 — Recompilar con el fix de CCFG (Windows)
 
 El firmware que hay en el chip ahora tiene `BL_BACKDOOR_PIN=0xFF` (el hex viejo).
-El `CMakeLists.txt` ya tiene el fix (`BL_BACKDOOR_PIN=0x0D`), pero hay que
+El `CMakeLists.txt` ya tiene el fix (`BL_BACKDOOR_PIN=0x0F` = DIO15), pero hay que
 recompilar para generar un nuevo `.hex` y que catnip vuelva a funcionar sin
 pulsar botones manualmente.
 
@@ -123,7 +123,7 @@ Copy-Item build\nrf24_sniffer.hex ..\compiled_firmware\nrf24_sniffer.hex
 
 ### 4.2 — Flashear con catnip (ya sin pulsar botones)
 
-Una vez que `BL_BACKDOOR_PIN=0x0D` esté en el chip, catnip podrá
+Una vez que `BL_BACKDOOR_PIN=0x0F` (DIO15) esté en el chip, catnip podrá
 abrir el BSL automáticamente:
 ```bash
 catnip flash firmware/nrf24_sniffer_cc1352p7/compiled_firmware/nrf24_sniffer.hex
@@ -220,7 +220,7 @@ Ctrl+C en Terminal 1
 
 - [x] Bug DataQueue corregido (`g_rxEntry`/`g_rxQueue` en `rx_one_packet()`)
 - [x] `bRepeatOk = 0x0` en `smartrf_settings.c`
-- [x] `SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN=0x0D` en `CMakeLists.txt`
+- [x] `SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN=0x0F` (DIO15) en `CMakeLists.txt`
 - [x] `ccfg_app.h` creado con los overrides CCFG
 - [x] CC1352P7 reflasheado vía JTAG (firmware body correcto)
 - [x] TAPID de OpenOCD parcheado para CC1352P7
