@@ -1,0 +1,224 @@
+name: Build nRF24 Sniffer Firmware (CC1352P7)
+
+# Dispara en push/PR que toquen el firmware, o manualmente
+on:
+  push:
+    branches: ["main", "master", "dev"]
+    paths:
+      - "firmware/nrf24_sniffer_cc1352p7/**"
+      - ".github/workflows/build-firmware.yml"
+  pull_request:
+    paths:
+      - "firmware/nrf24_sniffer_cc1352p7/**"
+      - ".github/workflows/build-firmware.yml"
+  workflow_dispatch:
+    inputs:
+      run_sysconfig:
+        description: "Ejecutar SysConfig en lugar de usar archivos pre-generados"
+        type: boolean
+        default: false
+
+# ── Variables de entorno globales ────────────────────────────────────────────
+env:
+  SDK_VERSION: "8.32.00.07"
+  SDK_INSTALL_DIR: "${{ github.workspace }}/_ti_sdk"
+  FIRMWARE_DIR:    "firmware/nrf24_sniffer_cc1352p7"
+  BUILD_DIR:       "_build"
+
+jobs:
+  build:
+    name: "Compilar firmware → .hex"
+    runs-on: ubuntu-22.04
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      # ── 2. Toolchain ARM GNU (Cortex-M4F) ─────────────────────────────────
+      - name: Instalar ARM GNU Toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-none-eabi      \
+            binutils-arm-none-eabi \
+            libatomic1             \
+            cmake                  \
+            ninja-build
+          arm-none-eabi-gcc --version
+          cmake --version
+
+      # ── 3. TI SimpleLink SDK (descarga + caché) ────────────────────────────
+      # El SDK (~1.4 GB descomprimido) se cachea para agilizar runs futuros.
+      #
+      # Para que funcione debes configurar en tu repositorio:
+      #   Settings → Secrets and variables → Actions → Secrets:
+      #     TI_SDK_URL = URL directa al instalador Linux del SDK
+      #                  (simplelink_cc13xx_cc26xx_sdk_8_32_00_07_linux.run)
+      #
+      # Puedes obtener la URL:
+      #   a) Descarga el SDK desde https://ti.com/tool/simplelink-cc13xx-cc26xx-sdk
+      #      y súbelo a un Release de este repo o a S3/GCS.
+      #   b) Usa una URL directa de tu proveedor de artefactos.
+      #
+      # Si no deseas configurar el secreto, usa USE_PREGENERATED_SYSCFG=ON
+      # (ver paso 5) y proporciona las biblotecas .a compiladas por otro canal.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Cachear TI SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SDK_INSTALL_DIR }}
+          key: ti-sdk-${{ env.SDK_VERSION }}-linux
+
+      - name: Descargar e instalar TI SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        env:
+          TI_SDK_URL: ${{ secrets.TI_SDK_URL }}
+        run: |
+          if [ -z "${TI_SDK_URL}" ]; then
+            echo "::warning::Secreto TI_SDK_URL no configurado; se omite la descarga del SDK."
+            echo "           Configura Settings → Secrets → TI_SDK_URL con la URL del instalador Linux."
+            exit 0
+          fi
+
+          echo "→ Descargando SDK ${{ env.SDK_VERSION }} ..."
+          wget -q --show-progress \
+               --timeout=300 \
+               "${TI_SDK_URL}" \
+               -O /tmp/ti_sdk.run
+
+          echo "→ Instalando en ${{ env.SDK_INSTALL_DIR }} ..."
+          chmod +x /tmp/ti_sdk.run
+          # El instalador del SDK TI es un script self-extracting (InstallBuilder).
+          # El flag --prefix instala en la ruta indicada sin GUI.
+          /tmp/ti_sdk.run --mode unattended --prefix "${{ env.SDK_INSTALL_DIR }}" \
+            || true   # algunos instaladores devuelven ≠0 en modo unattended; ignorar
+
+          # Verificación mínima
+          if [ ! -d "${{ env.SDK_INSTALL_DIR }}/source/ti/drivers" ]; then
+            echo "::error::El SDK no se instaló correctamente. Comprueba TI_SDK_URL."
+            exit 1
+          fi
+          echo "SDK instalado OK en ${{ env.SDK_INSTALL_DIR }}"
+
+      - name: Verificar que el SDK está disponible
+        id: sdk-check
+        run: |
+          if [ -d "${{ env.SDK_INSTALL_DIR }}/source/ti/drivers" ]; then
+            echo "sdk_ok=true"  >> "$GITHUB_OUTPUT"
+            echo "SDK encontrado: ${{ env.SDK_INSTALL_DIR }}"
+          else
+            echo "sdk_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SDK no disponible. Se usarán archivos pre-generados únicamente."
+          fi
+
+      # ── 4. SysConfig (sólo si el SDK está disponible y se pidió explícitamente)
+      - name: Regenerar ti_drivers_config con SysConfig
+        if: |
+          steps.sdk-check.outputs.sdk_ok == 'true' &&
+          github.event.inputs.run_sysconfig == 'true'
+        run: |
+          # El SysConfig CLI en SDK 8.x está en tools/sysconfig/
+          SYSCONFIG_CLI="${{ env.SDK_INSTALL_DIR }}/tools/sysconfig/sysconfig_cli.sh"
+          if [ ! -f "${SYSCONFIG_CLI}" ]; then
+            echo "::warning::sysconfig_cli.sh no encontrado; se usarán archivos pre-generados."
+            exit 0
+          fi
+          chmod +x "${SYSCONFIG_CLI}"
+          mkdir -p "${{ env.FIRMWARE_DIR }}/syscfg_pregenerated"
+          "${SYSCONFIG_CLI}" \
+            --product "${{ env.SDK_INSTALL_DIR }}/.metadata/product.json" \
+            --board   "/ti/boards/LP_CC1352P7_1" \
+            --rtos    nortos \
+            --compiler gcc \
+            --output  "${{ env.FIRMWARE_DIR }}/syscfg_pregenerated" \
+            "${{ env.FIRMWARE_DIR }}/nrf24_sniffer.syscfg"
+          echo "ti_drivers_config regenerado con SysConfig."
+
+      # ── 5. Configurar CMake ────────────────────────────────────────────────
+      - name: Configurar CMake
+        run: |
+          # Determinar si el SDK está disponible para establecer la ruta
+          SDK_PATH="${{ env.SDK_INSTALL_DIR }}"
+          if [ ! -d "${SDK_PATH}/source/ti/drivers" ]; then
+            echo "::error::SDK TI no disponible. Configura el secreto TI_SDK_URL."
+            echo "         Consulta el README del firmware para instrucciones."
+            exit 1
+          fi
+
+          cmake \
+            -S "${{ env.FIRMWARE_DIR }}" \
+            -B "${{ env.BUILD_DIR }}" \
+            -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="${{ env.FIRMWARE_DIR }}/arm-none-eabi-toolchain.cmake" \
+            -DTICC13XX_SDK_PATH="${SDK_PATH}" \
+            -DUSE_PREGENERATED_SYSCFG=ON \
+            -DCMAKE_BUILD_TYPE=MinSizeRel
+
+      # ── 6. Compilar ────────────────────────────────────────────────────────
+      - name: Compilar firmware
+        run: |
+          cmake --build "${{ env.BUILD_DIR }}" \
+                --parallel "$(nproc)" \
+                --target nrf24_sniffer
+          echo ""
+          echo "=== Tamaño del firmware ==="
+          arm-none-eabi-size "${{ env.BUILD_DIR }}/nrf24_sniffer"
+
+      # ── 7. Verificar que el .hex fue generado ─────────────────────────────
+      - name: Verificar artefactos
+        run: |
+          for f in nrf24_sniffer.hex nrf24_sniffer.bin nrf24_sniffer; do
+            FILE="${{ env.BUILD_DIR }}/$f"
+            if [ -f "${FILE}" ]; then
+              SIZE=$(wc -c < "${FILE}")
+              echo "✓ ${f}  (${SIZE} bytes)"
+            else
+              echo "✗ ${f} NO ENCONTRADO"
+            fi
+          done
+          # Fallar si el .hex no existe
+          [ -f "${{ env.BUILD_DIR }}/nrf24_sniffer.hex" ] \
+            || { echo "::error::nrf24_sniffer.hex no generado"; exit 1; }
+
+      # ── 8. Subir artefactos ────────────────────────────────────────────────
+      - name: Subir firmware como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: "nrf24-sniffer-cc1352p7-${{ github.sha }}"
+          path: |
+            ${{ env.BUILD_DIR }}/nrf24_sniffer.hex
+            ${{ env.BUILD_DIR }}/nrf24_sniffer.bin
+            ${{ env.BUILD_DIR }}/nrf24_sniffer.map
+          retention-days: 30
+          if-no-files-found: error
+
+      # ── 9. Resumen del build ───────────────────────────────────────────────
+      - name: Resumen de compilación
+        if: always()
+        run: |
+          echo "### 📦 Build nRF24 Sniffer CC1352P7" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Campo | Valor |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Commit | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SDK    | ${{ env.SDK_VERSION }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| RTOS   | NoRTOS (bare-metal) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Board  | LP_CC1352P7-1 |" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f "${{ env.BUILD_DIR }}/nrf24_sniffer.hex" ]; then
+            HEX_SIZE=$(wc -c < "${{ env.BUILD_DIR }}/nrf24_sniffer.hex")
+            echo "| .hex   | ✅ ${HEX_SIZE} bytes |" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "| .hex   | ❌ No generado |" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Tamaños de secciones si el ELF existe
+          if [ -f "${{ env.BUILD_DIR }}/nrf24_sniffer" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "#### Secciones del ELF" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            arm-none-eabi-size "${{ env.BUILD_DIR }}/nrf24_sniffer" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
