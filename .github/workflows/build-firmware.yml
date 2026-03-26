@@ -186,11 +186,14 @@ jobs:
             exit 1
           fi
 
+          # Las rutas deben ser absolutas para que CMake encuentre el toolchain
+          # antes de que se establezca el source dir (se procesa en project()).
+          WS="${{ github.workspace }}"
           cmake \
-            -S "${{ env.FIRMWARE_DIR }}" \
-            -B "${{ env.BUILD_DIR }}" \
+            -S "${WS}/${{ env.FIRMWARE_DIR }}" \
+            -B "${WS}/${{ env.BUILD_DIR }}" \
             -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE="${{ env.FIRMWARE_DIR }}/arm-none-eabi-toolchain.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="${WS}/${{ env.FIRMWARE_DIR }}/arm-none-eabi-toolchain.cmake" \
             -DTICC13XX_SDK_PATH="${SDK_PATH}" \
             -DUSE_PREGENERATED_SYSCFG=ON \
             -DCMAKE_BUILD_TYPE=MinSizeRel
@@ -198,18 +201,20 @@ jobs:
       # ── 6. Compilar ────────────────────────────────────────────────────────
       - name: Compilar firmware
         run: |
-          cmake --build "${{ env.BUILD_DIR }}" \
+          WS="${{ github.workspace }}"
+          cmake --build "${WS}/${{ env.BUILD_DIR }}" \
                 --parallel "$(nproc)" \
                 --target nrf24_sniffer
           echo ""
           echo "=== Tamaño del firmware ==="
-          arm-none-eabi-size "${{ env.BUILD_DIR }}/nrf24_sniffer"
+          arm-none-eabi-size "${WS}/${{ env.BUILD_DIR }}/nrf24_sniffer"
 
       # ── 7. Verificar que el .hex fue generado ─────────────────────────────
       - name: Verificar artefactos
         run: |
+          WS="${{ github.workspace }}"
           for f in nrf24_sniffer.hex nrf24_sniffer.bin nrf24_sniffer; do
-            FILE="${{ env.BUILD_DIR }}/$f"
+            FILE="${WS}/${{ env.BUILD_DIR }}/$f"
             if [ -f "${FILE}" ]; then
               SIZE=$(wc -c < "${FILE}")
               echo "✓ ${f}  (${SIZE} bytes)"
@@ -218,7 +223,7 @@ jobs:
             fi
           done
           # Fallar si el .hex no existe
-          [ -f "${{ env.BUILD_DIR }}/nrf24_sniffer.hex" ] \
+          [ -f "${WS}/${{ env.BUILD_DIR }}/nrf24_sniffer.hex" ] \
             || { echo "::error::nrf24_sniffer.hex no generado"; exit 1; }
 
       # ── 8. Subir artefactos ────────────────────────────────────────────────
