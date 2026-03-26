@@ -19,6 +19,9 @@ on:
         default: false
 
 # ── Variables de entorno globales ────────────────────────────────────────────
+# SDK compatible: simplelink_cc13xx_cc26xx_sdk ≥ 7.10  O  simplelink_lowpower_f2_sdk ≥ 7.x
+# El CC1352P7 es CC13x2 — ambos SDKs lo soportan con la misma estructura interna.
+# Ajusta SDK_VERSION al número de versión real del SDK que descargues.
 env:
   SDK_VERSION: "8.32.00.07"
   SDK_INSTALL_DIR: "${{ github.workspace }}/_ti_sdk"
@@ -77,9 +80,12 @@ jobs:
           TI_SDK_URL: ${{ secrets.TI_SDK_URL }}
         run: |
           if [ -z "${TI_SDK_URL}" ]; then
-            echo "::warning::Secreto TI_SDK_URL no configurado; se omite la descarga del SDK."
-            echo "           Configura Settings → Secrets → TI_SDK_URL con la URL del instalador Linux."
-            exit 0
+            echo "::error::Secreto TI_SDK_URL no configurado."
+            echo "::error::Configura: GitHub repo → Settings → Secrets → Actions → TI_SDK_URL"
+            echo "::error::Valor: URL directa al instalador Linux del SDK 8.32.00.07"
+            echo "::error::Descarga el SDK desde https://www.ti.com/tool/simplelink-cc13xx-cc26xx-sdk"
+            echo "::error::Luego súbelo a un GitHub Release o servicio de almacenamiento y pega la URL directa."
+            exit 1
           fi
 
           echo "→ Descargando SDK ${{ env.SDK_VERSION }} ..."
@@ -105,11 +111,26 @@ jobs:
       - name: Verificar que el SDK está disponible
         id: sdk-check
         run: |
+          # El instalador del CC13xx SDK instala directamente en --prefix.
+          # El instalador del F2 SDK puede crear un subdirectorio con el nombre del SDK.
+          # Buscamos source/ti/drivers en el prefix y en un nivel de subdir.
+          SDK_ROOT=""
           if [ -d "${{ env.SDK_INSTALL_DIR }}/source/ti/drivers" ]; then
-            echo "sdk_ok=true"  >> "$GITHUB_OUTPUT"
-            echo "SDK encontrado: ${{ env.SDK_INSTALL_DIR }}"
+            SDK_ROOT="${{ env.SDK_INSTALL_DIR }}"
           else
-            echo "sdk_ok=false" >> "$GITHUB_OUTPUT"
+            SDK_ROOT=$(find "${{ env.SDK_INSTALL_DIR }}" \
+                          -maxdepth 2 -type d -name "source" \
+                          -path "*/source/ti" \
+                          2>/dev/null | head -1 | sed 's|/source/ti$||' || true)
+          fi
+
+          if [ -n "${SDK_ROOT}" ] && [ -d "${SDK_ROOT}/source/ti/drivers" ]; then
+            echo "sdk_ok=true"   >> "$GITHUB_OUTPUT"
+            echo "sdk_root=${SDK_ROOT}" >> "$GITHUB_OUTPUT"
+            echo "SDK encontrado: ${SDK_ROOT}"
+          else
+            echo "sdk_ok=false"  >> "$GITHUB_OUTPUT"
+            echo "sdk_root="     >> "$GITHUB_OUTPUT"
             echo "::warning::SDK no disponible. Se usarán archivos pre-generados únicamente."
           fi
 
@@ -139,9 +160,11 @@ jobs:
       # ── 5. Configurar CMake ────────────────────────────────────────────────
       - name: Configurar CMake
         run: |
-          # Determinar si el SDK está disponible para establecer la ruta
-          SDK_PATH="${{ env.SDK_INSTALL_DIR }}"
-          if [ ! -d "${SDK_PATH}/source/ti/drivers" ]; then
+          # Usar el SDK_ROOT resuelto en el paso anterior (maneja tanto el SDK clásico
+          # simplelink_cc13xx_cc26xx como el SDK F2 simplelink_lowpower_f2, que puede
+          # instalarse en un subdirectorio dentro del prefix).
+          SDK_PATH="${{ steps.sdk-check.outputs.sdk_root }}"
+          if [ -z "${SDK_PATH}" ] || [ ! -d "${SDK_PATH}/source/ti/drivers" ]; then
             echo "::error::SDK TI no disponible. Configura el secreto TI_SDK_URL."
             echo "         Consulta el README del firmware para instrucciones."
             exit 1
