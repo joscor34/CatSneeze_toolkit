@@ -101,12 +101,25 @@ jobs:
           /tmp/ti_sdk.run --mode unattended --prefix "${{ env.SDK_INSTALL_DIR }}" \
             || true   # algunos instaladores devuelven ≠0 en modo unattended; ignorar
 
-          # Verificación mínima
-          if [ ! -d "${{ env.SDK_INSTALL_DIR }}/source/ti/drivers" ]; then
+          # Verificación: buscar source/ti/drivers en la raíz del prefix O en
+          # un subdirectorio (el F2 SDK instala en un subdir con el nombre del SDK).
+          SDK_FOUND=""
+          if [ -d "${{ env.SDK_INSTALL_DIR }}/source/ti/drivers" ]; then
+            SDK_FOUND="${{ env.SDK_INSTALL_DIR }}"
+          else
+            SDK_FOUND=$(find "${{ env.SDK_INSTALL_DIR }}" \
+                          -maxdepth 3 -type d -name "drivers" \
+                          -path "*/ti/drivers" \
+                          2>/dev/null | head -1 | sed 's|/source/ti/drivers$||' || true)
+          fi
+
+          if [ -z "${SDK_FOUND}" ]; then
             echo "::error::El SDK no se instaló correctamente. Comprueba TI_SDK_URL."
+            echo "Contenido de ${{ env.SDK_INSTALL_DIR }}:"
+            ls "${{ env.SDK_INSTALL_DIR }}" 2>/dev/null || echo "(vacío)"
             exit 1
           fi
-          echo "SDK instalado OK en ${{ env.SDK_INSTALL_DIR }}"
+          echo "SDK instalado OK en ${SDK_FOUND}"
 
       - name: Verificar que el SDK está disponible
         id: sdk-check
