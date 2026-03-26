@@ -5,8 +5,9 @@
  *   - RF (radio core propietario 2.4 GHz)
  *   - UART2 (comunicación con el host Python)
  *   - Power (DC/DC habilitado para LP_CC1352P7)
+ *   - CCFG (BSL backdoor DIO15, xoscCapArrayDelta para LP_CC1352P7_1)
  *
- * RTOS: FreeRTOS (compilado como fuente, compatible con GCC)
+ * RTOS: NoRTOS (bare-metal super-loop; compila con nortos_cc13x2x7.a de GCC)
  */
 
 // ── Módulo RF ─────────────────────────────────────────────────────────────────
@@ -14,7 +15,7 @@ const RF = scripting.addModule("/ti/drivers/RF");
 // Sin configuración adicional: el radio se inicia desde nrf24_sniffer.c
 // usando RF_open() con el RF_Mode generado por smartrf_settings.c
 
-// ── Módulo UART2 (backchannel XDS110 UART @ 115200 baud, DIO12/DIO13) ─────────
+// ── Módulo UART2 (backchannel XDS110 UART, DIO12=RX / DIO13=TX) ───────────────
 const UART2 = scripting.addModule("/ti/drivers/UART2");
 const uart0 = UART2.addInstance();
 uart0.$name      = "CONFIG_UART2_0";
@@ -24,3 +25,15 @@ uart0.$hardware  = system.deviceData.board.components.XDS110UART;
 const Power = scripting.addModule("/ti/drivers/Power");
 Power.enablePolicy = true;
 // DC/DC ya está habilitado por el perfil LP_CC1352P7-1 del board hardware
+
+// ── CCFG — BSL backdoor pin y calibración cristal ────────────────────────────
+// CRITICAL: sin esto, regenerar con SysConfig produciría CCFG sin BSL backdoor
+// y el RP2040 no podría entrar al bootloader serial del CC1352P7.
+const CCFG = scripting.addModule("/ti/devices/CCFG");
+CCFG.enableBootloader           = true;
+CCFG.enableBootloaderBackdoor   = true;
+CCFG.dioBootloaderBackdoor      = 15;       // DIO15 — GPIO2 del RP2040 (CC1352_BOOT)
+CCFG.levelBootloaderBackdoor    = "ACTIVE_LOW";
+// Calibración XOSC_HF para LP_CC1352P7_1 (corrige frecuencia de referencia RF)
+CCFG.xoscCapArray               = true;
+CCFG.xoscCapArrayDelta          = 0xC1;     // confirmado en lprf_ccfg_settings.js

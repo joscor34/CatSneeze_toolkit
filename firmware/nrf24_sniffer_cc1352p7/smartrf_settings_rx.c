@@ -42,24 +42,19 @@ RF_Mode RF_prop =
 
 
 // Overrides for CMD_PROP_RADIO_DIV_SETUP_PA
+// Nota: para 2.4 GHz NO se incluyen los overrides de override_prop_common_sub1g.xml
+// (FSCA divider bias, HW32_ARRAY_OVERRIDE 0x405C) — esos son solo para Sub-1 GHz.
 uint32_t pOverrides[] =
 {
-    // override_tc706.xml
-    // Tx: Configure PA ramp time, PACTL2.RC=0x3 (in ADI0, set PACTL2[4:3]=0x3)
+    // override_tc706.xml — PA ramp time (CC1352P7 con PA externo high-power)
     ADI_2HALFREG_OVERRIDE(0,16,0x8,0x8,17,0x1,0x1),
     // Rx: Set AGC reference level to 0x1A (default: 0x2E)
     HW_REG_OVERRIDE(0x609C,0x001A),
-    // Rx: Set RSSI offset to adjust reported RSSI by -1 dB (default: -2), trimmed for external bias and differential configuration
+    // Rx: Ajuste del offset de RSSI (−1 dB)
     (uint32_t)0x000188A3,
-    // Rx: Set anti-aliasing filter bandwidth to 0xD (in ADI0, set IFAMPCTL3[7:4]=0xD)
+    // Rx: Set anti-aliasing filter bandwidth to 0xD (ADI0: IFAMPCTL3[7:4]=0xD)
     ADI_HALFREG_OVERRIDE(0,61,0xF,0xD),
-    // override_prop_common_sub1g.xml
-    // TX: Set FSCA divider bias to 1
-    HW32_ARRAY_OVERRIDE(0x405C,0x0001),
-    // TX: Set FSCA divider bias to 1
-    (uint32_t)0x08141131,
-    // override_prop_common.xml
-    // DC/DC regulator: In Tx with 14 dBm PA setting, use DCDCCTL5[3:0]=0xF (DITHER_EN=1 and IPEAK=7). In Rx, use default settings.
+    // override_prop_common.xml — DC/DC en Tx con PA 14 dBm
     (uint32_t)0x00F788D3,
     (uint32_t)0xFFFFFFFF
 };
@@ -93,7 +88,7 @@ rfc_CMD_PROP_RADIO_DIV_SETUP_PA_t RF_cmdPropRadioDivSetup =
     .formatConf.bMsbFirst = 0x1,
     .formatConf.fecMode = 0x0,
     .formatConf.whitenMode = 0x0,
-    .config.frontEndMode = 0x0,
+    .config.frontEndMode = 0x1,            /* Single-ended via RFP — CatSniffer V3 usa SKY13317-373LF */
     .config.biasMode = 0x1,
     .config.analogCfgMode = 0x0,
     .config.bNoFsPowerUp = 0x0,
