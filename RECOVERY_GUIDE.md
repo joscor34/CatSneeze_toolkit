@@ -1,6 +1,5 @@
 # Guía de Recuperación y Estado del Proyecto CatSniffer
 
-> Documento generado: 22 marzo 2026  
 > Aplica a: **CatSniffer v3** (RP2040 + CC1352P7)
 
 ---
