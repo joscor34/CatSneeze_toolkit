@@ -12,7 +12,7 @@
  *   VCC  → 3.3 V  (¡no 5V!)  +  condensador 100 µF entre VCC y GND
  *   GND  → GND
  *   CE   → Pin 9
- *   CSN  → Pin 10
+ *   CSN  → Pin 8
  *   SCK  → Pin 13
  *   MOSI → Pin 11
  *   MISO → Pin 12
@@ -249,8 +249,8 @@ void applyConfig(uint8_t channel, const uint8_t* addr) {
     radio.setPALevel(RF24_PA_LOW);        // bajo para pruebas en banco
     radio.setPayloadSize(0);              // dynamic payload
     radio.enableDynamicPayloads();
-    radio.setAutoAck(true);
-    radio.setRetries(5, 15);             // 5 reintentos, 15*250µs = 3.75 ms delay
+    radio.setAutoAck(false);            // sniffer pasivo no envía ACKs — evitar retransmisiones
+    radio.setRetries(0, 0);              // sin reintentos: TX continuo limpio
     radio.openWritingPipe(addr);
     radio.powerUp();
 

@@ -5,8 +5,8 @@
  * permitiendo probar nrf24_sniffer.py SIN tener el hardware CC1352P7.
  *
  * Conecta el Arduino al PC y apunta el sniffer a su puerto COM/ttyUSB.
- *   Linux/Mac : python main.py → nrf24_sniffer → port=/dev/ttyUSB0
- *   Windows   : port=COM3  etc.
+ *   Linux/Mac : python main.py → nrf24_sniffer → port=/dev/ttyUSB0  baud=921600
+ *   Windows   : port=COM3  baud=921600  etc.
  *
  * Protocolo simulado (líneas que reconoce nrf24_sniffer.py):
  * ──────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@
  */
 
 // ── Configuración ──────────────────────────────────────────────────────────────
-#define SIM_BAUD        115200
+#define SIM_BAUD        921600   // debe coincidir con baud=921600 del sniffer Python
 #define PKT_DELAY_MS    500        // intervalo entre frames [ESB]
 #define ACK_EVERY       3          // enviar [ACK] cada N frames
 #define NUM_DEVICES     3          // dispositivos ficticios
