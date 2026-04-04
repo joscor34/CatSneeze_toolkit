@@ -176,11 +176,17 @@ set(INCLUDES
 set(DEVICE_DEFINES
     "${DEVICE_DEFINE}"
     # BSL backdoor habilitado → permite re-flashear via RP2040/catnip
+    # CRITICAL: ccfg.c del SDK 8.32 usa BL_PIN_NUMBER y BL_LEVEL (no BL_BACKDOOR_*).
+    # Si solo se define BL_BACKDOOR_PIN, ccfg.c NO lo reconoce y usa el default
+    # BL_PIN_NUMBER=0xFF (pin inexistente) → el CatSniffer queda BRICKEADO.
+    # Se definen ambas convenciones para compatibilidad con todas las versiones del SDK.
     "SET_CCFG_BL_CONFIG_BL_ENABLE=0xC5"
     "SET_CCFG_BL_CONFIG_BOOTLOADER_ENABLE=0xC5"
     "SET_CCFG_BL_CONFIG_BL_BACKDOOR_ENABLE=0xC5"
-    "SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN=0x0F"       # DIO15 — CatSniffer V3
-    "SET_CCFG_BL_CONFIG_BL_BACKDOOR_LEVEL=0x0"
+    "SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN=0x0F"       # nombre alternativo SDK
+    "SET_CCFG_BL_CONFIG_BL_BACKDOOR_LEVEL=0x0"       # nombre alternativo SDK
+    "SET_CCFG_BL_CONFIG_BL_PIN_NUMBER=0x0F"          # DIO15 — nombre SDK 8.32
+    "SET_CCFG_BL_CONFIG_BL_LEVEL=0x0"                # activo bajo — nombre SDK 8.32
     # Calibración del cristal XOSC_HF (LP_CC1352P7_1 / CatSniffer V3)
     "SET_CCFG_MODE_CONF_XOSC_CAP_MOD=0"             # 0 = modificar cap array
     "SET_CCFG_MODE_CONF_XOSC_CAPARRAY_DELTA=0xC1"   # delta LP_CC1352P7_1

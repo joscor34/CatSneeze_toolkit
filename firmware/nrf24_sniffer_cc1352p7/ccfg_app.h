@@ -31,12 +31,33 @@
 /*
  * Guardas de seguridad: si ccfg.c incluye este header directamente,
  * los defines están aquí también como fallback.
+ *
+ * CRITICAL: El SDK 8.32 usa BL_PIN_NUMBER y BL_LEVEL (no BL_BACKDOOR_*).
+ * Se definen ambas convenciones para cubrir todas las versiones del SDK.
  */
-#ifndef SET_CCFG_BL_CONFIG_BL_BACKDOOR_ENABLE
+
+/* Nombres SDK 8.32 (ccfg.c real) */
+#ifndef SET_CCFG_BL_CONFIG_BL_PIN_NUMBER
+#define SET_CCFG_BL_CONFIG_BL_PIN_NUMBER        0x0F   /* DIO15 — CatSniffer V3 */
+#endif
+#ifndef SET_CCFG_BL_CONFIG_BL_LEVEL
+#define SET_CCFG_BL_CONFIG_BL_LEVEL             0x0    /* activo en bajo */
+#endif
+#ifndef SET_CCFG_BL_CONFIG_BL_ENABLE
 #define SET_CCFG_BL_CONFIG_BL_ENABLE            0xC5
+#endif
+#ifndef SET_CCFG_BL_CONFIG_BOOTLOADER_ENABLE
 #define SET_CCFG_BL_CONFIG_BOOTLOADER_ENABLE    0xC5
+#endif
+
+/* Nombres alternativos (documentación CatSniffer / otros SDKs) */
+#ifndef SET_CCFG_BL_CONFIG_BL_BACKDOOR_ENABLE
 #define SET_CCFG_BL_CONFIG_BL_BACKDOOR_ENABLE   0xC5
+#endif
+#ifndef SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN
 #define SET_CCFG_BL_CONFIG_BL_BACKDOOR_PIN      0x0F   /* DIO15 — CatSniffer V3 */
+#endif
+#ifndef SET_CCFG_BL_CONFIG_BL_BACKDOOR_LEVEL
 #define SET_CCFG_BL_CONFIG_BL_BACKDOOR_LEVEL    0x0
 #endif
 

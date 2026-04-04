@@ -188,26 +188,45 @@ static bool rf_set_channel(uint8_t channel)
 
 /**
  * rf_set_sync_word() — Cambia el sync word del CMD_PROP_RX_ADV.
- * Modo promiscuo: 0xAAAAAAAA
- * Modo dirigido:  address del target (4/5 bytes)
+ *
+ * nSwBits (en CMD_PROP_RADIO_DIV_SETUP.formatConf) define cuántos bits
+ * del sync word se comparan. Debe coincidir con la longitud real de
+ * la secuencia que buscamos en el aire:
+ *
+ *   Promiscuo: 8 bits (0xAA) — captura cualquier frame nRF24.
+ *     El nRF24 envía solo 1 byte de preamble (0xAA para addr MSB=1).
+ *     Un sync de 32 bits (0xAAAAAAAA) requiere 4 bytes de 0xAA que
+ *     NO existen en un frame con dirección E7E7E7E7E7 → nunca captura.
+ *     Con 8 bits, el radio sincroniza en el preamble byte y captura
+ *     el frame completo. Los falsos positivos se filtran por CRC.
+ *
+ *   Dirigido: 32 bits (preamble + addr[0:2]) — captura solo un target.
  */
 static void rf_set_sync_word_promisc(void)
 {
-    RF_nrf24_cmdPropRxAdv.syncWord0    = 0xAAAAAAAAUL;
-    /* syncWordLen is implicit: syncWord0 is always 32 bits */
+    RF_nrf24_cmdPropRadioDivSetup_1M.formatConf.nSwBits = 0x08;
+    RF_nrf24_cmdPropRxAdv.syncWord0 = 0x000000AAUL;
+    /* Re-ejecutar setup para aplicar nSwBits = 8 */
+    RF_runCmd(g_rfHandle,
+              (RF_Op *)&RF_nrf24_cmdPropRadioDivSetup_1M,
+              RF_PriorityNormal, NULL, 0);
 }
 
 static void rf_set_sync_word_directed(const uint8_t *addr, uint8_t aw)
 {
-    /* Sync word = preamble (1 byte) + primeros 3 bytes de addr */
+    /* Sync word = preamble (1 byte) + primeros 3 bytes de addr = 32 bits */
+    RF_nrf24_cmdPropRadioDivSetup_1M.formatConf.nSwBits = 0x20;
     uint8_t preamble = esb_preamble_for_addr(addr);
     RF_nrf24_cmdPropRxAdv.syncWord0 =
         ((uint32_t)preamble   << 24) |
         ((uint32_t)addr[0]    << 16) |
         ((uint32_t)addr[1]    <<  8) |
         ((uint32_t)addr[2]);
-    /* syncWordLen is implicit: syncWord0 is always 32 bits */
-    (void)aw; /* se podría ampliar a 40 bits para mayor selectividad */
+    /* Re-ejecutar setup para aplicar nSwBits = 32 */
+    RF_runCmd(g_rfHandle,
+              (RF_Op *)&RF_nrf24_cmdPropRadioDivSetup_1M,
+              RF_PriorityNormal, NULL, 0);
+    (void)aw;
 }
 
 /* ── Transmisión TX ──────────────────────────────────────────────────────────── */
